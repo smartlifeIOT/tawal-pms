@@ -13,20 +13,15 @@ import ConfirmModal from "../components/ConfirmModal";
 import Spinner from "../components/Spinner";
 import { formatDate } from "../utils/date";
 import {
-  CloudUpload,
   Download,
   FolderOpen,
   LayoutGrid,
   List as ListIcon,
   Trash2,
-  Calendar,
   Clock,
   ArrowRight,
   MapPin,
-  AlertTriangle,
-  CheckCircle,
   FileSpreadsheet,
-  FileText,
 } from "lucide-react";
 import ProjectCard from "../components/ProjectCard";
 import { getCatBadge, getPriorityBadge } from "../utils/helpers";
