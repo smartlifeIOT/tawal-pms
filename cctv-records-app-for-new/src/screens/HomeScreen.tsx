@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Modal,
@@ -7,12 +7,17 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+} from "react-native";
+import {
+  RouteProp,
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { Ionicons } from "@expo/vector-icons";
 
-import AppText from '../components/AppText';
+import AppText from "../components/AppText";
 import {
   Chip,
   EmptyState,
@@ -20,16 +25,12 @@ import {
   Field,
   LoadingState,
   SelectablePill,
-} from '../components/ui';
-import { getSites } from '../api/siteService';
-import { useAuth } from '../contexts/AuthContext';
-import { SitesStackParamList } from '../navigation';
-import { Role, RmsScope, Site } from '../types';
-import {
-  STATUS_STEPS,
-  formatDate,
-  rmsScopeLabel,
-} from '../utils/helpers';
+} from "../components/ui";
+import { getSites } from "../api/siteService";
+import { useAuth } from "../contexts/AuthContext";
+import { SitesStackParamList } from "../navigation";
+import { Role, RmsScope, Site } from "../types";
+import { STATUS_STEPS, formatDate, rmsScopeLabel } from "../utils/helpers";
 import {
   colors,
   fontSize,
@@ -38,10 +39,10 @@ import {
   shadow,
   spacing,
   statusColor,
-} from '../theme';
+} from "../theme";
 
 type Nav = NativeStackNavigationProp<SitesStackParamList>;
-type Rt = RouteProp<SitesStackParamList, 'SitesList'>;
+type Rt = RouteProp<SitesStackParamList, "SitesList">;
 
 const StatusDots: React.FC<{ site: Site }> = ({ site }) => (
   <View style={styles.statusRow}>
@@ -66,7 +67,10 @@ const StatusDots: React.FC<{ site: Site }> = ({ site }) => (
   </View>
 );
 
-const SiteCard: React.FC<{ site: Site; onPress: () => void }> = ({ site, onPress }) => (
+const SiteCard: React.FC<{ site: Site; onPress: () => void }> = ({
+  site,
+  onPress,
+}) => (
   <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
     <View style={styles.cardHead}>
       <View style={{ flex: 1, paddingRight: spacing.sm }}>
@@ -84,7 +88,9 @@ const SiteCard: React.FC<{ site: Site; onPress: () => void }> = ({ site, onPress
     </View>
     <StatusDots site={site} />
     <View style={styles.cardFoot}>
-      <AppText style={styles.muted}>Created {formatDate(site.createdAt)}</AppText>
+      <AppText style={styles.muted}>
+        Created {formatDate(site.createdAt)}
+      </AppText>
       <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
     </View>
   </TouchableOpacity>
@@ -107,18 +113,18 @@ const HomeScreen: React.FC = () => {
   // Seed the region filter from the route param so the dashboard's region
   // drill-down lands on the pre-filtered list. Region is free-text now so we
   // accept any string the navigator hands us.
-  const initialRegion = route.params?.region ?? '';
+  const initialRegion = route.params?.region ?? "";
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [filterRegion, setFilterRegion] = useState<string>(initialRegion);
-  const [filterScope, setFilterScope] = useState<RmsScope | ''>('');
+  const [filterScope, setFilterScope] = useState<RmsScope | "">("");
   const [filterOpen, setFilterOpen] = useState(false);
 
   // If the user navigates here with a new region param (e.g. tapping a
   // different dashboard card while the tab is already mounted) we want the
   // filter to update.
   useEffect(() => {
-    if (typeof route.params?.region === 'string') {
+    if (typeof route.params?.region === "string") {
       setFilterRegion(route.params.region);
     }
   }, [route.params?.region]);
@@ -127,13 +133,18 @@ const HomeScreen: React.FC = () => {
     if (!silent) setLoading(true);
     setError(null);
     const res = await getSites();
+    console.log(res);
     if (res.success && res.data) setSites(res.data);
-    else setError(res.message ?? 'Failed to load sites');
+    else setError(res.message ?? "Failed to load sites");
     setLoading(false);
     setRefreshing(false);
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -141,15 +152,15 @@ const HomeScreen: React.FC = () => {
       if (filterRegion && s.region !== filterRegion) return false;
       if (filterScope && s.rmsScope !== filterScope) return false;
       if (q) {
-        const blob = `${s.siteName} ${s.tawalId} ${s.siteCity} ${s.tcnNumber}`.toLowerCase();
+        const blob =
+          `${s.siteName} ${s.tawalId} ${s.siteCity} ${s.tcnNumber}`.toLowerCase();
         if (!blob.includes(q)) return false;
       }
       return true;
     });
   }, [sites, search, filterRegion, filterScope]);
 
-  const activeFilterCount =
-    (filterRegion ? 1 : 0) + (filterScope ? 1 : 0);
+  const activeFilterCount = (filterRegion ? 1 : 0) + (filterScope ? 1 : 0);
 
   // Region options come from whatever region strings exist in the loaded
   // sites — keep the active filter in the list even if the dataset would
@@ -168,22 +179,27 @@ const HomeScreen: React.FC = () => {
           <Field
             value={search}
             onChangeText={setSearch}
-            placeholder="Search by name, Tawal ID, city, TCN"
+            placeholder="Search by name, Tawal ID, city, TCNs"
             style={{ marginBottom: 0 }}
           />
         </View>
         <Pressable
           onPress={() => setFilterOpen(true)}
-          style={[styles.filterBtn, activeFilterCount > 0 && styles.filterBtnActive]}
+          style={[
+            styles.filterBtn,
+            activeFilterCount > 0 && styles.filterBtnActive,
+          ]}
         >
           <Ionicons
             name="filter"
             size={20}
-            color={activeFilterCount > 0 ? '#fff' : colors.brand}
+            color={activeFilterCount > 0 ? "#fff" : colors.brand}
           />
           {activeFilterCount > 0 && (
             <View style={styles.filterDot}>
-              <AppText style={styles.filterDotText}>{activeFilterCount}</AppText>
+              <AppText style={styles.filterDotText}>
+                {activeFilterCount}
+              </AppText>
             </View>
           )}
         </Pressable>
@@ -201,7 +217,9 @@ const HomeScreen: React.FC = () => {
           renderItem={({ item }) => (
             <SiteCard
               site={item}
-              onPress={() => navigation.navigate('SiteDetail', { siteId: item._id })}
+              onPress={() =>
+                navigation.navigate("SiteDetail", { siteId: item._id })
+              }
             />
           )}
           ListEmptyComponent={
@@ -210,13 +228,13 @@ const HomeScreen: React.FC = () => {
               title={
                 sites.length === 0
                   ? role === Role.TECHNICIAN
-                    ? 'No sites assigned yet'
-                    : 'No sites yet'
-                  : 'No sites match the filters'
+                    ? "No sites assigned yet"
+                    : "No sites yet"
+                  : "No sites match the filters"
               }
               subtitle={
                 sites.length === 0 && canCreate
-                  ? 'Tap + to create your first site.'
+                  ? "Tap + to create your first site."
                   : undefined
               }
             />
@@ -224,7 +242,10 @@ const HomeScreen: React.FC = () => {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); load(true); }}
+              onRefresh={() => {
+                setRefreshing(true);
+                load(true);
+              }}
               tintColor={colors.brand}
             />
           }
@@ -234,7 +255,7 @@ const HomeScreen: React.FC = () => {
       {canCreate && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => navigation.navigate('AddSite')}
+          onPress={() => navigation.navigate("AddSite")}
           activeOpacity={0.85}
         >
           <Ionicons name="add" size={28} color="#fff" />
@@ -249,7 +270,10 @@ const HomeScreen: React.FC = () => {
         onChangeRegion={setFilterRegion}
         onChangeScope={setFilterScope}
         onClose={() => setFilterOpen(false)}
-        onClear={() => { setFilterRegion(''); setFilterScope(''); }}
+        onClear={() => {
+          setFilterRegion("");
+          setFilterScope("");
+        }}
       />
     </View>
   );
@@ -258,14 +282,28 @@ const HomeScreen: React.FC = () => {
 const FilterModal: React.FC<{
   open: boolean;
   region: string;
-  scope: RmsScope | '';
+  scope: RmsScope | "";
   regionOptions: string[];
   onChangeRegion: (r: string) => void;
-  onChangeScope: (s: RmsScope | '') => void;
+  onChangeScope: (s: RmsScope | "") => void;
   onClose: () => void;
   onClear: () => void;
-}> = ({ open, region, scope, regionOptions, onChangeRegion, onChangeScope, onClose, onClear }) => (
-  <Modal visible={open} animationType="slide" transparent onRequestClose={onClose}>
+}> = ({
+  open,
+  region,
+  scope,
+  regionOptions,
+  onChangeRegion,
+  onChangeScope,
+  onClose,
+  onClear,
+}) => (
+  <Modal
+    visible={open}
+    animationType="slide"
+    transparent
+    onRequestClose={onClose}
+  >
     <View style={styles.modalBackdrop}>
       <View style={styles.modalCard}>
         <View style={styles.modalHead}>
@@ -287,7 +325,7 @@ const FilterModal: React.FC<{
               key={r}
               label={r}
               active={region === r}
-              onPress={() => onChangeRegion(region === r ? '' : r)}
+              onPress={() => onChangeRegion(region === r ? "" : r)}
             />
           ))}
         </View>
@@ -299,17 +337,21 @@ const FilterModal: React.FC<{
               key={s}
               label={rmsScopeLabel(s)}
               active={scope === s}
-              onPress={() => onChangeScope(scope === s ? '' : s)}
+              onPress={() => onChangeScope(scope === s ? "" : s)}
             />
           ))}
         </View>
 
         <View style={styles.modalActions}>
           <TouchableOpacity onPress={onClear} style={{ padding: spacing.sm }}>
-            <AppText style={{ color: colors.textMuted, fontWeight: '600' }}>Clear all</AppText>
+            <AppText style={{ color: colors.textMuted, fontWeight: "600" }}>
+              Clear all
+            </AppText>
           </TouchableOpacity>
           <TouchableOpacity onPress={onClose} style={styles.modalApply}>
-            <AppText style={{ color: '#fff', fontWeight: '700' }}>Apply</AppText>
+            <AppText style={{ color: "#fff", fontWeight: "700" }}>
+              Apply
+            </AppText>
           </TouchableOpacity>
         </View>
       </View>
@@ -322,8 +364,8 @@ export default HomeScreen;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   toolbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
@@ -333,28 +375,28 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radius.md,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: colors.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   filterBtnActive: { backgroundColor: colors.brand },
   filterDot: {
-    position: 'absolute',
+    position: "absolute",
     top: 2,
     right: 2,
     minWidth: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     paddingHorizontal: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.brand,
   },
-  filterDotText: { color: colors.brand, fontSize: 9, fontWeight: '700' },
+  filterDotText: { color: colors.brand, fontSize: 9, fontWeight: "700" },
 
   list: {
     paddingHorizontal: spacing.lg,
@@ -362,84 +404,92 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: radius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
     ...shadow.card,
   },
-  cardHead: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: spacing.sm },
-  cardTitle: { fontSize: fontSize.lg, fontWeight: '700', color: colors.text },
+  cardHead: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: spacing.sm,
+  },
+  cardTitle: { fontSize: fontSize.lg, fontWeight: "700", color: colors.text },
   cardSub: { fontSize: fontSize.sm, color: colors.textMuted, marginTop: 2 },
   cardRegion: { fontSize: fontSize.xs, color: colors.textFaint, marginTop: 2 },
   cardFoot: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginTop: spacing.sm,
   },
   muted: { fontSize: fontSize.xs, color: colors.textFaint },
 
   statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 4,
   },
-  statusCol: { alignItems: 'center', flex: 1 },
+  statusCol: { alignItems: "center", flex: 1 },
   dot: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   dotPending: { backgroundColor: colors.border },
   statusLabel: { fontSize: 9, color: colors.textMuted, marginTop: 3 },
 
   fab: {
-    position: 'absolute',
+    position: "absolute",
     right: 22,
     bottom: 22,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: colors.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     ...shadow.brand,
   },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(15,26,46,0.55)', justifyContent: 'flex-end' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15,26,46,0.55)",
+    justifyContent: "flex-end",
+  },
   modalCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.xl,
-    maxHeight: '85%',
+    maxHeight: "85%",
   },
   modalHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: spacing.md,
   },
-  modalTitle: { fontSize: fontSize.h2, fontWeight: '700', color: colors.text },
+  modalTitle: { fontSize: fontSize.h2, fontWeight: "700", color: colors.text },
   modalSection: {
     fontSize: fontSize.xs,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.brand,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
     letterSpacing: 1,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
   },
-  pillWrap: { flexDirection: 'row', flexWrap: 'wrap' },
+  pillWrap: { flexDirection: "row", flexWrap: "wrap" },
   modalActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginTop: spacing.lg,
   },
   modalApply: {

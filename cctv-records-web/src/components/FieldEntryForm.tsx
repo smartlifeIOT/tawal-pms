@@ -19,7 +19,6 @@ import {
 import { apiErrorMessage, readFileAsDataUrl } from "@/utils/helpers";
 import {
   buildFieldEntrySchema,
-  getFirstZodError,
   getZodFieldErrors,
 } from "@/utils/fieldEntryValidation";
 import {

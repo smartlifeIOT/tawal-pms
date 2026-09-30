@@ -93,6 +93,7 @@ export class ReportsService {
       cctvCameraPhotos: 0,
       cctvHardDiskPhotos: 0,
       cctvFullSitePhoto: 0,
+      otherSitePhotos: 0,
     };
 
     const isAll = q.limit === 0;

@@ -304,6 +304,7 @@ export class SiteService {
       cctvCameraPhotos: 0,
       cctvHardDiskPhotos: 0,
       cctvFullSitePhoto: 0,
+      otherSitePhotos: 0,
     };
 
     // When pagination params are explicitly provided, return paginated response.
