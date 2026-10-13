@@ -22,6 +22,7 @@ import {
   parseWorkbook,
   processWorkbook,
   buildOutputWorkbook,
+  buildFinalSheetWorkbook,
   downloadWorkbook,
   extractTawalIds,
   extractAvailableCategories,
@@ -183,8 +184,12 @@ export default function BoqProcessor() {
 
     setWoSync({ state: "loading", stcIds });
     try {
-      const wb = buildOutputWorkbook(rawBuffer, res.outputRows);
-      const file = workbookToFile(wb, outputFileName());
+      // Only the Final Sheet goes into the project's mapping file
+      const wb = buildFinalSheetWorkbook(res.outputRows);
+      const file = workbookToFile(
+        wb,
+        fileName.replace(/\.(xlsx|xls)$/i, "") + "_final_sheet.xlsx",
+      );
 
       const formData = new FormData();
       formData.append("file", file);

@@ -233,10 +233,8 @@ export function parseWorkbook(buffer) {
   return { sheet1, sheet2, sheet1Name, sheet2Name, allSheetNames: wb.SheetNames };
 }
 
-// ─── Build output workbook ────────────────────────────────────────────────────
-export function buildOutputWorkbook(originalBuffer, outputRows) {
-  const wb = XLSX.read(originalBuffer, { type: "array" });
-
+// ─── Build the "Final Sheet" worksheet ───────────────────────────────────────
+function buildFinalSheet(outputRows) {
   const sheetData = outputRows.length
     ? outputRows
     : [
@@ -274,13 +272,27 @@ export function buildOutputWorkbook(originalBuffer, outputRows) {
     outSheet["!cols"] = colWidths.map((w) => ({ wch: w }));
   }
 
+  return outSheet;
+}
+
+// ─── Build output workbook (original sheets + Final Sheet) — for download ────
+export function buildOutputWorkbook(originalBuffer, outputRows) {
+  const wb = XLSX.read(originalBuffer, { type: "array" });
+
   const existingIdx = wb.SheetNames.indexOf("Final Sheet");
   if (existingIdx !== -1) {
     wb.SheetNames.splice(existingIdx, 1);
     delete wb.Sheets["Final Sheet"];
   }
 
-  XLSX.utils.book_append_sheet(wb, outSheet, "Final Sheet");
+  XLSX.utils.book_append_sheet(wb, buildFinalSheet(outputRows), "Final Sheet");
+  return wb;
+}
+
+// ─── Workbook with ONLY the Final Sheet — attached to projects as mapping file
+export function buildFinalSheetWorkbook(outputRows) {
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildFinalSheet(outputRows), "Final Sheet");
   return wb;
 }
 
