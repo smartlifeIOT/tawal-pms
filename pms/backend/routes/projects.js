@@ -654,6 +654,90 @@ router.post(
   },
 );
 
+// Import Issued WO sheet → bulk set WO Issuance to "Approved" with the
+// WO Number and date from the sheet, matching projects by Site ID.
+// Body: { rows: [{ siteId, woNumber, date: "YYYY-MM-DD" }] }
+router.post(
+  "/bulk/wo-issuance",
+  protect,
+  authorize("Admin", "Manager", "PM"),
+  async (req, res) => {
+    try {
+      const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+      if (rows.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "The sheet has no rows to import" });
+      }
+
+      const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const invalid = [];
+      const bySite = new Map(); // last row wins for duplicate Site IDs
+
+      rows.forEach((row, i) => {
+        const rowNo = row.rowNumber || i + 2;
+        const siteId = String(row.siteId ?? "").trim();
+        const woNumber = String(row.woNumber ?? "").trim();
+        const date = row.date ? new Date(row.date) : null;
+
+        if (!siteId) return invalid.push({ row: rowNo, reason: "Missing Site ID" });
+        if (!woNumber)
+          return invalid.push({ row: rowNo, siteId, reason: "Missing WO Number" });
+        if (row.date && Number.isNaN(date.getTime()))
+          return invalid.push({ row: rowNo, siteId, reason: "Invalid date" });
+
+        bySite.set(siteId.toLowerCase(), { siteId, woNumber, date });
+      });
+
+      const entries = [...bySite.values()];
+      const projects = entries.length
+        ? await Project.find({
+            siteId: {
+              $in: entries.map((e) => new RegExp(`^${escape(e.siteId)}$`, "i")),
+            },
+          })
+        : [];
+
+      const updated = [];
+      const matched = new Set();
+      for (const project of projects) {
+        const key = String(project.siteId || "").trim().toLowerCase();
+        const entry = bySite.get(key);
+        if (!entry) continue;
+        matched.add(key);
+
+        project.set("mapping.woIssuance.status", "Approved");
+        project.set("mapping.woIssuance.woNumber", entry.woNumber);
+        if (entry.date) project.set("mapping.woIssuance.date", entry.date);
+        // save() so the status-progression pre-save hook runs
+        await project.save();
+
+        updated.push({
+          _id: project._id,
+          title: project.title,
+          siteId: project.siteId,
+          woNumber: entry.woNumber,
+          status: project.status,
+        });
+      }
+
+      const notFound = entries
+        .filter((e) => !matched.has(e.siteId.toLowerCase()))
+        .map((e) => e.siteId);
+
+      res.status(200).json({
+        message: `WO Issuance updated for ${updated.length} project(s)`,
+        updatedCount: updated.length,
+        updated,
+        notFound,
+        invalid,
+      });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
 // Create a new project (Admin, Manager only)
 router.post("/", protect, authorize("Admin", "Manager"), async (req, res) => {
   try {

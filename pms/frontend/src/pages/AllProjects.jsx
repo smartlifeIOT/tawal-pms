@@ -10,6 +10,7 @@ import {
 } from "../hooks/project";
 import ProjectForm from "../components/ProjectForm";
 import ConfirmModal from "../components/ConfirmModal";
+import ImportIssuedWoModal from "../components/ImportIssuedWoModal";
 import Spinner from "../components/Spinner";
 import { formatDate } from "../utils/date";
 import {
@@ -22,6 +23,7 @@ import {
   ArrowRight,
   MapPin,
   FileSpreadsheet,
+  ClipboardCheck,
 } from "lucide-react";
 import ProjectCard from "../components/ProjectCard";
 import { getCatBadge, getPriorityBadge } from "../utils/helpers";
@@ -41,6 +43,7 @@ const AllProjects = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isImportWoOpen, setIsImportWoOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   const [viewMode, setViewMode] = useState(() => {
@@ -290,6 +293,13 @@ const AllProjects = () => {
                   <FileSpreadsheet size={15} /> Upload Excel / CSV
                 </>
               )}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setIsImportWoOpen(true)}
+              title="Upload a sheet with Site ID, WO Number and Date to bulk-approve WO Issuance"
+            >
+              <ClipboardCheck size={15} /> Import Issued WO
             </button>
             <button
               className="btn btn-secondary"
@@ -847,6 +857,11 @@ const AllProjects = () => {
 
       {/* Modals */}
       <ProjectForm isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+      <ImportIssuedWoModal
+        isOpen={isImportWoOpen}
+        onClose={() => setIsImportWoOpen(false)}
+      />
 
       <ConfirmModal
         isOpen={isBulkDeleteModalOpen}

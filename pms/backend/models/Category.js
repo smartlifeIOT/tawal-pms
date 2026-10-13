@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-//test
 
 const CategorySchema = new mongoose.Schema(
   {

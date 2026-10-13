@@ -242,6 +242,22 @@ export const useUploadProjectsBulk = () => {
   });
 };
 
+// Import Issued WO sheet → bulk set WO Issuance (Approved + WO Number + date)
+export const useImportIssuedWo = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rows }) =>
+      apiInstance
+        .post(`${API_BASE}/projects/bulk/wo-issuance`, { rows })
+        .then((res) => res.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+};
+
 // Add a scope to a category
 export const useAddCategoryScope = () => {
   const queryClient = useQueryClient();
@@ -292,6 +308,7 @@ export default {
   useDeleteCategory,
   useUpdateCategory,
   useUploadProjectsBulk,
+  useImportIssuedWo,
   useAddCategoryScope,
   useDeleteCategoryScope,
 };
