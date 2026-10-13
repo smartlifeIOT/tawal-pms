@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { apiInstance } from "../service";
+import { getFileLinkProps } from "../utils/files";
 import toast from "react-hot-toast";
 import {
   FileText,
@@ -11,7 +12,6 @@ import {
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
-const SERVER_BASE = API_BASE.replace(/\/api\/?$/, "");
 
 export default function WorkOrder({
   project,
@@ -37,12 +37,6 @@ export default function WorkOrder({
       (currentFileUrl ? currentFileUrl.split("/").pop() : "")
     : project.mapping?.woRequest?.fileName ||
       (currentFileUrl ? currentFileUrl.split("/").pop() : "");
-
-  const getFullUrl = (url) => {
-    if (!url) return "";
-    if (url.startsWith("http://") || url.startsWith("https://")) return url;
-    return `${SERVER_BASE}${url.startsWith("/") ? "" : "/"}${url}`;
-  };
 
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -228,9 +222,7 @@ export default function WorkOrder({
 
               {currentFileUrl && (
                 <a
-                  href={getFullUrl(currentFileUrl)}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  {...getFileLinkProps(currentFileUrl, currentFileName)}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -438,9 +430,7 @@ export default function WorkOrder({
                   >
                     <FileText size={16} color="#4f46e5" />
                     <a
-                      href={getFullUrl(currentFileUrl)}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      {...getFileLinkProps(currentFileUrl, currentFileName)}
                       style={{
                         fontSize: "0.82rem",
                         color: "#4f46e5",

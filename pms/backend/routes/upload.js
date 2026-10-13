@@ -55,4 +55,42 @@ router.post("/", protect, upload.single("file"), (req, res) => {
   }
 });
 
+// Serve a stored file.
+// Lives under /api so it goes through the same proxy as every other API call
+// (the bare /uploads static path is often not proxied in production).
+// PDFs open inline in the browser; every other format is sent as a download
+// using the original file name (?name=...).
+const buildContentDisposition = (type, fileName) => {
+  const asciiName = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
+  return `${type}; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+};
+
+router.get("/files/:filename", (req, res) => {
+  // basename() strips any "../" so only files inside uploadDir can be served
+  const storedName = path.basename(req.params.filename || "");
+  const filePath = path.join(uploadDir, storedName);
+
+  if (!storedName || !fs.existsSync(filePath)) {
+    return res.status(404).json({ message: "File not found" });
+  }
+
+  const requestedName =
+    typeof req.query.name === "string" && req.query.name.trim()
+      ? path.basename(req.query.name.trim())
+      : storedName;
+
+  const isPdf = path.extname(storedName).toLowerCase() === ".pdf";
+
+  res.type(path.extname(storedName) || "application/octet-stream");
+  res.setHeader(
+    "Content-Disposition",
+    buildContentDisposition(isPdf ? "inline" : "attachment", requestedName),
+  );
+  res.sendFile(filePath, (err) => {
+    if (err && !res.headersSent) {
+      res.status(500).json({ message: "Could not read file" });
+    }
+  });
+});
+
 module.exports = router;

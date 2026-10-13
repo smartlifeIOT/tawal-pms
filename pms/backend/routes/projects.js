@@ -572,6 +572,88 @@ router.post(
   },
 );
 
+// BOQ processor → mark WO Request as "Requested" for every project whose
+// Site ID matches an STC ID from the generated sheet, set the BOQ date and
+// attach the generated workbook as the mapping file.
+router.post(
+  "/boq/wo-request",
+  protect,
+  authorize(
+    "Admin",
+    "Manager",
+    "PM",
+    "Logistics",
+    "Coordinator",
+    "Integration & Support",
+    "Document Controller",
+    "Closeout",
+  ),
+  async (req, res) => {
+    try {
+      const { stcIds, fileUrl, fileName, date } = req.body;
+
+      if (!Array.isArray(stcIds) || stcIds.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "No STC IDs were provided from the BOQ sheet" });
+      }
+      if (!fileUrl || !String(fileUrl).trim()) {
+        return res
+          .status(400)
+          .json({ message: "Mapping file is required to request a WO" });
+      }
+
+      const cleanIds = [
+        ...new Set(stcIds.map((id) => String(id ?? "").trim()).filter(Boolean)),
+      ];
+      const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const idRegexes = cleanIds.map((id) => new RegExp(`^${escape(id)}$`, "i"));
+
+      const boqDate = date ? new Date(date) : new Date();
+      if (Number.isNaN(boqDate.getTime())) {
+        return res.status(400).json({ message: "Invalid BOQ date" });
+      }
+
+      const projects = await Project.find({ siteId: { $in: idRegexes } });
+
+      const updated = [];
+      for (const project of projects) {
+        project.set("mapping.woRequest.status", "Requested");
+        project.set("mapping.woRequest.date", boqDate);
+        project.set("mapping.woRequest.fileUrl", String(fileUrl).trim());
+        project.set(
+          "mapping.woRequest.fileName",
+          String(fileName || "").trim() || String(fileUrl).split("/").pop(),
+        );
+        // save() (not updateMany) so the status-progression pre-save hook runs
+        await project.save();
+        updated.push({
+          _id: project._id,
+          title: project.title,
+          siteId: project.siteId,
+          status: project.status,
+        });
+      }
+
+      const matchedIds = new Set(
+        projects.map((p) => String(p.siteId || "").trim().toLowerCase()),
+      );
+      const unmatched = cleanIds.filter(
+        (id) => !matchedIds.has(id.toLowerCase()),
+      );
+
+      res.status(200).json({
+        message: `WO Request set to "Requested" for ${updated.length} project(s)`,
+        updatedCount: updated.length,
+        updated,
+        unmatched,
+      });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
 // Create a new project (Admin, Manager only)
 router.post("/", protect, authorize("Admin", "Manager"), async (req, res) => {
   try {

@@ -288,6 +288,22 @@ export function downloadWorkbook(wb, filename) {
   XLSX.writeFile(wb, filename);
 }
 
+// Serialises the workbook so it can be uploaded as the project's mapping file.
+export function workbookToFile(wb, filename) {
+  const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  return new File([data], filename, {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+}
+
+// Unique STC IDs of the sites that actually produced BOQ lines in the Final
+// Sheet (taken from the sheet's "STC ID" column, written out as "Site Code").
+export function extractStcIds(outputRows) {
+  return [
+    ...new Set(outputRows.map((r) => String(r["Site Code"] ?? "").trim())),
+  ].filter(Boolean);
+}
+
 // ─── Re-exports ───────────────────────────────────────────────────────────────
 export const OUTPUT_COLUMNS = [
   "Budget",

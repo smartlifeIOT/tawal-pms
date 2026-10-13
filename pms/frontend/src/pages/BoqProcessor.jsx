@@ -1,11 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   AlertCircle,
   ArrowRight,
   Check,
   ChevronDown,
+  ClipboardCheck,
   Download,
   LayoutDashboard,
+  Loader2,
   RotateCcw,
   Search,
   Tag,
@@ -23,7 +26,20 @@ import {
   extractTawalIds,
   extractAvailableCategories,
   findTawalIdKey,
+  workbookToFile,
+  extractStcIds,
 } from "../utils/boqExcel";
+import { useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
+import { apiInstance } from "../service";
+
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000/api";
+
+const todayIso = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 const STEPS = [
   { label: "Upload", description: "Select workbook" },
@@ -69,6 +85,10 @@ export default function BoqProcessor() {
 
   const [result, setResult] = useState(null);
   const [activeTab, setActiveTab] = useState("output");
+
+  // WO Request sync (projects matched by STC ID)
+  const queryClient = useQueryClient();
+  const [woSync, setWoSync] = useState({ state: "idle" });
 
   // Filtered dropdown options based on search query
   const filteredDropdownIds = useMemo(() => {
@@ -145,6 +165,60 @@ export default function BoqProcessor() {
     });
   };
 
+  const outputFileName = () =>
+    fileName.replace(/\.(xlsx|xls)$/i, "") + "_combined_output.xlsx";
+
+  // Once the Final Sheet exists: upload the generated workbook, then mark the
+  // WO Request as "Requested" (dated today, file attached) on every project
+  // whose Site ID matches an STC ID from the sheet.
+  const syncWoRequests = async (res) => {
+    const stcIds = extractStcIds(res.outputRows);
+    if (!stcIds.length) {
+      setWoSync({
+        state: "skipped",
+        message: "No STC IDs found in the Final Sheet, so no projects were updated.",
+      });
+      return;
+    }
+
+    setWoSync({ state: "loading", stcIds });
+    try {
+      const wb = buildOutputWorkbook(rawBuffer, res.outputRows);
+      const file = workbookToFile(wb, outputFileName());
+
+      const formData = new FormData();
+      formData.append("file", file);
+      const uploadRes = await apiInstance.post(`${API_BASE}/upload`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const { data } = await apiInstance.post(
+        `${API_BASE}/projects/boq/wo-request`,
+        {
+          stcIds,
+          fileUrl: uploadRes.data.url,
+          fileName: uploadRes.data.fileName || file.name,
+          date: todayIso(),
+        },
+      );
+
+      setWoSync({ state: "done", stcIds, ...data });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      if (data.updatedCount > 0) {
+        toast.success(data.message);
+      } else {
+        toast.error("No projects matched the STC IDs in this sheet");
+      }
+    } catch (e) {
+      const message =
+        e.response?.data?.message || e.message || "Failed to update projects";
+      setWoSync({ state: "error", stcIds, message });
+      toast.error(message);
+    }
+  };
+
   const handleGenerate = () => {
     if (!workbookData) return;
     if (selectedCategories.length === 0) {
@@ -153,8 +227,9 @@ export default function BoqProcessor() {
     }
     setLoading(true);
     setError(null);
+    let res = null;
     try {
-      const res = processWorkbook(workbookData, selectedIds, selectedCategories);
+      res = processWorkbook(workbookData, selectedIds, selectedCategories);
       setResult(res);
       setActiveTab("output");
       setStep(2);
@@ -163,15 +238,13 @@ export default function BoqProcessor() {
     } finally {
       setLoading(false);
     }
+    if (res) syncWoRequests(res);
   };
 
   const handleDownload = () => {
     if (!rawBuffer || !result) return;
     const wb = buildOutputWorkbook(rawBuffer, result.outputRows);
-    downloadWorkbook(
-      wb,
-      fileName.replace(/\.(xlsx|xls)$/i, "") + "_combined_output.xlsx",
-    );
+    downloadWorkbook(wb, outputFileName());
   };
 
   const handleReset = () => {
@@ -184,6 +257,7 @@ export default function BoqProcessor() {
     setSelectedCategories([]);
     setSelectedIds([]);
     setResult(null);
+    setWoSync({ state: "idle" });
     setError(null);
     setSelectValue("");
     setSearchQuery("");
@@ -544,6 +618,89 @@ export default function BoqProcessor() {
               label="Categories matched"
             />
           </div>
+
+          {woSync.state !== "idle" && (
+            <div className="glass-panel">
+              <div className="flex-between">
+                <div className="tool-panel-title">
+                  <ClipboardCheck size={16} />
+                  WO Request update
+                  {woSync.state === "done" && (
+                    <span className="tool-count-pill">
+                      {woSync.updatedCount}/{woSync.stcIds.length}
+                    </span>
+                  )}
+                </div>
+                {woSync.state === "error" && (
+                  <button
+                    type="button"
+                    onClick={() => syncWoRequests(result)}
+                    className="tool-link-btn"
+                  >
+                    <RotateCcw size={13} />
+                    Retry
+                  </button>
+                )}
+              </div>
+
+              {woSync.state === "loading" && (
+                <p className="tool-muted" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Loader2 size={14} className="animate-spin" />
+                  Attaching the mapping file and setting WO Request to
+                  "Requested" for {woSync.stcIds.length} STC ID
+                  {woSync.stcIds.length !== 1 ? "s" : ""}…
+                </p>
+              )}
+
+              {woSync.state === "skipped" && (
+                <p className="tool-muted">{woSync.message}</p>
+              )}
+
+              {woSync.state === "error" && (
+                <div className="tool-alert tool-alert-danger" style={{ marginTop: "0.75rem" }}>
+                  <AlertCircle size={16} />
+                  <p style={{ margin: 0, color: "inherit" }}>{woSync.message}</p>
+                </div>
+              )}
+
+              {woSync.state === "done" && (
+                <>
+                  {woSync.updated.length > 0 && (
+                    <div className="tool-alert tool-alert-success" style={{ marginTop: "0.75rem" }}>
+                      <Check size={16} />
+                      <p style={{ margin: 0, color: "inherit" }}>
+                        WO Request set to "Requested" (dated today, mapping
+                        file attached) for {woSync.updated.length} project
+                        {woSync.updated.length !== 1 ? "s" : ""}.
+                      </p>
+                    </div>
+                  )}
+                  {woSync.updated.length > 0 && (
+                    <div className="boq-chips">
+                      {woSync.updated.map((p) => (
+                        <Link key={p._id} to={`/projects/${p._id}`} className="boq-chip" style={{ textDecoration: "none", paddingRight: "0.8rem" }}>
+                          {p.siteId} · {p.title}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                  {woSync.unmatched.length > 0 && (
+                    <>
+                      <p className="boq-inline-warning">
+                        <AlertCircle size={14} />
+                        No project found with these STC IDs as Site ID:
+                      </p>
+                      <div className="boq-chips">
+                        {woSync.unmatched.map((id) => (
+                          <span key={id} className="boq-chip">{id}</span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {result.uniqueCategories.length > 0 && (
             <div className="glass-panel">
