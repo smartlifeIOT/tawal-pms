@@ -18,7 +18,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /var/www/pms/pms
+            cd /var/www/pms
             git pull 
 
             # --- Rebuild and Restart Frontend ---
