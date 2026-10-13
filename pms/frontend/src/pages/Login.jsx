@@ -15,7 +15,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    const success = await login(email, password);
+    const success = await login(email.toLocaleLowerCase(), password);
     if (success) {
       queryClient.clear();
       navigate("/");
