@@ -2,7 +2,7 @@ name: Deploy to Production VPS
 
 on:
   push:
-    branches: [ main ]  # Triggers the action when you push to the 'main' branch.
+    branches: [master] # Triggers the action when you push to the 'master' branch.
 
 jobs:
   deploy:
@@ -19,7 +19,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /var/www/pms/pms
-            git pull origin main
+            git pull origin master
 
             # --- Rebuild and Restart Frontend ---
             cd frontend
