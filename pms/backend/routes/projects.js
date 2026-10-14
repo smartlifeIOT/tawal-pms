@@ -738,6 +738,114 @@ router.post(
   },
 );
 
+// Import WO Mapping File (step 1): find projects whose Site ID or Tawal ID
+// matches any of the IDs found in the uploaded sheet.
+// Body: { ids: ["STC-100", "T-123", ...] }
+router.post(
+  "/lookup-sites",
+  protect,
+  authorize("Admin", "Manager", "PM"),
+  async (req, res) => {
+    try {
+      const ids = [
+        ...new Set(
+          (Array.isArray(req.body.ids) ? req.body.ids : [])
+            .map((id) => String(id ?? "").trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (!ids.length) return res.status(200).json({ data: [] });
+
+      const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regexes = ids.map((id) => new RegExp(`^${escape(id)}$`, "i"));
+
+      const projects = await Project.find({
+        $or: [{ siteId: { $in: regexes } }, { tawalId: { $in: regexes } }],
+      })
+        .select("title siteId tawalId mapping.woRequest status")
+        .lean();
+
+      res.status(200).json({
+        data: projects.map((p) => ({
+          _id: p._id,
+          title: p.title,
+          siteId: p.siteId || "",
+          tawalId: p.tawalId || "",
+          status: p.status,
+          woRequestStatus: p.mapping?.woRequest?.status || "Pending",
+          currentFileName: p.mapping?.woRequest?.fileName || "",
+        })),
+      });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
+// Import WO Mapping File (step 2): each project gets its own split file.
+// Sets WO Request → "Requested", the given date, and attaches the file.
+// Body: { date: "YYYY-MM-DD", items: [{ projectId, fileUrl, fileName }] }
+router.post(
+  "/bulk/wo-request",
+  protect,
+  authorize("Admin", "Manager", "PM"),
+  async (req, res) => {
+    try {
+      const items = Array.isArray(req.body.items) ? req.body.items : [];
+      if (!items.length) {
+        return res.status(400).json({ message: "No sites to update" });
+      }
+
+      const date = req.body.date ? new Date(req.body.date) : new Date();
+      if (Number.isNaN(date.getTime())) {
+        return res.status(400).json({ message: "Invalid date" });
+      }
+
+      const updated = [];
+      const failed = [];
+      for (const item of items) {
+        const fileUrl = String(item.fileUrl || "").trim();
+        if (!item.projectId || !fileUrl) {
+          failed.push({ projectId: item.projectId, reason: "Missing project or file" });
+          continue;
+        }
+        try {
+          const project = await Project.findById(item.projectId);
+          if (!project) {
+            failed.push({ projectId: item.projectId, reason: "Project not found" });
+            continue;
+          }
+          project.set("mapping.woRequest.status", "Requested");
+          project.set("mapping.woRequest.date", date);
+          project.set("mapping.woRequest.fileUrl", fileUrl);
+          project.set(
+            "mapping.woRequest.fileName",
+            String(item.fileName || "").trim() || fileUrl.split("/").pop(),
+          );
+          await project.save(); // runs the status-progression hook
+          updated.push({
+            _id: project._id,
+            title: project.title,
+            siteId: project.siteId,
+            status: project.status,
+          });
+        } catch (err) {
+          failed.push({ projectId: item.projectId, reason: err.message });
+        }
+      }
+
+      res.status(200).json({
+        message: `WO Request set to "Requested" for ${updated.length} project(s)`,
+        updatedCount: updated.length,
+        updated,
+        failed,
+      });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  },
+);
+
 // Create a new project (Admin, Manager only)
 router.post("/", protect, authorize("Admin", "Manager"), async (req, res) => {
   try {

@@ -11,6 +11,7 @@ import {
 import ProjectForm from "../components/ProjectForm";
 import ConfirmModal from "../components/ConfirmModal";
 import ImportIssuedWoModal from "../components/ImportIssuedWoModal";
+import ImportWoMappingModal from "../components/ImportWoMappingModal";
 import Spinner from "../components/Spinner";
 import { formatDate } from "../utils/date";
 import {
@@ -24,6 +25,7 @@ import {
   MapPin,
   FileSpreadsheet,
   ClipboardCheck,
+  FileUp,
 } from "lucide-react";
 import ProjectCard from "../components/ProjectCard";
 import { getCatBadge, getPriorityBadge } from "../utils/helpers";
@@ -44,6 +46,7 @@ const AllProjects = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isImportWoOpen, setIsImportWoOpen] = useState(false);
+  const [isImportMappingOpen, setIsImportMappingOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   const [viewMode, setViewMode] = useState(() => {
@@ -293,6 +296,13 @@ const AllProjects = () => {
                   <FileSpreadsheet size={15} /> Upload Excel / CSV
                 </>
               )}
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setIsImportMappingOpen(true)}
+              title="Upload one sheet for many sites — split per Site ID, attached as each project's mapping file, WO Request set to Requested"
+            >
+              <FileUp size={15} /> Import WO Mapping File
             </button>
             <button
               className="btn btn-secondary"
@@ -857,6 +867,11 @@ const AllProjects = () => {
 
       {/* Modals */}
       <ProjectForm isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
+      <ImportWoMappingModal
+        isOpen={isImportMappingOpen}
+        onClose={() => setIsImportMappingOpen(false)}
+      />
 
       <ImportIssuedWoModal
         isOpen={isImportWoOpen}
