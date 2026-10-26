@@ -31,6 +31,14 @@ function normalizeProjectRow(rawRow) {
   const description = getVal("description", "desc");
   if (description !== undefined) obj.description = String(description).trim();
 
+  const program = getVal(
+    "program",
+    "programName",
+    "program_name",
+    "program name",
+  );
+  if (program !== undefined) obj.program = String(program).trim();
+
   const category = getVal("category");
   if (category !== undefined) obj.category = String(category).trim();
 
@@ -227,6 +235,7 @@ function prepareExportRows(data) {
   const headers = [
     "title",
     "description",
+    "program",
     "category",
     "projectScope",
     "status",
@@ -299,6 +308,7 @@ export function exportToCSV(data, filename = "projects_export.csv") {
   const headers = [
     "title",
     "description",
+    "program",
     "category",
     "projectScope",
     "status",
@@ -353,4 +363,39 @@ export function exportToCSV(data, filename = "projects_export.csv") {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+// Generate and download a sample template for bulk project upload (Excel or CSV)
+export function downloadProjectsTemplate(format = "xlsx") {
+  const sampleData = [
+    {
+      title: "Sample Tower Expansion",
+      description: "Sample project description",
+      program: "Telecom Expansion 2026",
+      category: "Telecom",
+      projectScope: "Installation",
+      status: "Initiation",
+      priority: "Medium",
+      siteId: "SITE-1001",
+      tawalId: "TWL-1001",
+      region: "Riyadh",
+      city: "Riyadh",
+      teamLead: "lead@example.com",
+      budget: 50000,
+      spent: 0,
+      progress: 0,
+      startDate: "2026-01-01",
+      endDate: "2026-12-31",
+      teamMembers: "member1@example.com; member2@example.com",
+      tags: "Phase1; Urgent",
+      longitude: 46.6753,
+      latitude: 24.7136,
+    },
+  ];
+
+  if (format === "csv") {
+    exportToCSV(sampleData, "projects_bulk_upload_template.csv");
+  } else {
+    exportToExcel(sampleData, "projects_bulk_upload_template.xlsx");
+  }
 }

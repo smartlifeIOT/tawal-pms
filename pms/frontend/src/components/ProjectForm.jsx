@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Save } from "lucide-react";
 import { z } from "zod";
 import { useAuthStore } from "../store/authStore";
@@ -6,12 +6,17 @@ import {
   useCreateProject,
   useCategories,
   useProjectsByCategory,
+  usePrograms,
 } from "../hooks/project";
 import { useUsers } from "../hooks/user";
 import LocationPicker from "./LocationPicker";
 import { useParams } from "react-router-dom";
 
 const projectFormSchema = z.object({
+  program: z
+    .string({ required_error: "Program is required" })
+    .trim()
+    .min(1, "Program is required"),
   title: z
     .string({ required_error: "Project title is required" })
     .trim()
@@ -61,11 +66,18 @@ const projectFormSchema = z.object({
     .optional(),
 });
 
-const ProjectForm = ({ isOpen, onClose }) => {
+const ProjectForm = ({
+  isOpen,
+  onClose,
+  initialProgram = "",
+  initialCategory = "",
+}) => {
   const params = useParams();
-  const SelectCategoryFroMParams = params.categoryName;
+  const selectProgramFromParams = params.programName || initialProgram;
+  const SelectCategoryFroMParams = params.categoryName || initialCategory;
   const { user } = useAuthStore();
   const { mutate, isLoading, error } = useCreateProject();
+  const { data: programs = [], isLoading: isProgramsLoading } = usePrograms();
   const { data: categories = [], isLoading: isCategoriesLoading } =
     useCategories();
   const canCreateProject = user?.role === "Admin" || user?.role === "Manager";
@@ -76,6 +88,7 @@ const ProjectForm = ({ isOpen, onClose }) => {
   const [fieldErrors, setFieldErrors] = useState({});
 
   const [formData, setFormData] = useState({
+    program: selectProgramFromParams || "",
     title: "",
     category: SelectCategoryFroMParams || "",
     projectScope: "",
@@ -97,6 +110,24 @@ const ProjectForm = ({ isOpen, onClose }) => {
     teamMembers: [],
     tags: "",
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData((prev) => ({
+        ...prev,
+        program:
+          selectProgramFromParams || prev.program || programs[0]?.name || "",
+        category: SelectCategoryFroMParams || prev.category || "",
+      }));
+    }
+  }, [isOpen, selectProgramFromParams, SelectCategoryFroMParams, programs]);
+
+  const availableCategories = useMemo(() => {
+    if (!formData.program) return categories;
+    return categories.filter(
+      (cat) => !cat.program || cat.program === formData.program,
+    );
+  }, [categories, formData.program]);
 
   const selectedCategory = useMemo(
     () => categories.find((cat) => cat.name === formData.category),
@@ -223,6 +254,7 @@ const ProjectForm = ({ isOpen, onClose }) => {
         onClose();
         setFieldErrors({});
         setFormData({
+          program: selectProgramFromParams || programs[0]?.name || "",
           title: "",
           category: "",
           projectScope: "",
@@ -304,15 +336,37 @@ const ProjectForm = ({ isOpen, onClose }) => {
               </h3>
               <div style={formStyles.gridRow}>
                 <div>
-                  <label style={formStyles.label}>Project Title *</label>
-                  <input
-                    type="text"
-                    style={getInputStyle("title")}
-                    placeholder="e.g. RMS Dashboard v2"
-                    value={formData.title}
-                    onChange={(e) => handleFieldChange("title", e.target.value)}
-                  />
-                  {renderFieldError("title")}
+                  <label style={formStyles.label}>Program *</label>
+                  <select
+                    style={getInputStyle("program")}
+                    value={formData.program}
+                    onChange={(e) => {
+                      const nextProg = e.target.value;
+                      const validCats = categories.filter(
+                        (c) => !c.program || c.program === nextProg,
+                      );
+                      const catValid = validCats.some(
+                        (c) => c.name === formData.category,
+                      );
+                      handleFieldChange("program", nextProg, {
+                        category: catValid ? formData.category : "",
+                        projectScope: catValid ? formData.projectScope : "",
+                      });
+                    }}
+                    disabled={isProgramsLoading}
+                  >
+                    <option value="" disabled>
+                      {isProgramsLoading
+                        ? "Loading programs..."
+                        : "Select Program"}
+                    </option>
+                    {programs.map((prog) => (
+                      <option key={prog._id} value={prog.name}>
+                        {prog.name}
+                      </option>
+                    ))}
+                  </select>
+                  {renderFieldError("program")}
                 </div>
                 <div>
                   <label style={formStyles.label}>Category *</label>
@@ -324,12 +378,18 @@ const ProjectForm = ({ isOpen, onClose }) => {
                         projectScope: "",
                       })
                     }
-                    disabled={isCategoriesLoading}
+                    disabled={isCategoriesLoading || !formData.program}
                   >
                     <option value="" disabled>
-                      {isCategoriesLoading ? "Loading..." : "Select category"}
+                      {isCategoriesLoading
+                        ? "Loading categories..."
+                        : !formData.program
+                          ? "Select a program first"
+                          : availableCategories.length === 0
+                            ? "No categories in this program"
+                            : "Select category"}
                     </option>
-                    {categories.map((cat) => (
+                    {availableCategories.map((cat) => (
                       <option key={cat._id} value={cat.name}>
                         {cat.name} — &#x20C1;{" "}
                         {cat.budget?.toLocaleString() ?? 0}
@@ -340,32 +400,45 @@ const ProjectForm = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              <div style={{ marginBottom: "1rem" }}>
-                <label style={formStyles.label}>Project Scope *</label>
-                <select
-                  style={getInputStyle("projectScope")}
-                  value={formData.projectScope}
-                  onChange={(e) =>
-                    handleFieldChange("projectScope", e.target.value)
-                  }
-                  disabled={
-                    !formData.category || !selectedCategory?.scopes?.length
-                  }
-                >
-                  <option value="">
-                    {!formData.category
-                      ? "Select a category first"
-                      : !selectedCategory?.scopes?.length
-                        ? "No scopes defined for this category"
-                        : "— Select scope —"}
-                  </option>
-                  {(selectedCategory?.scopes || []).map((scope) => (
-                    <option key={scope} value={scope}>
-                      {scope}
+              <div style={formStyles.gridRow}>
+                <div>
+                  <label style={formStyles.label}>Project Title *</label>
+                  <input
+                    type="text"
+                    style={getInputStyle("title")}
+                    placeholder="e.g. RMS Dashboard v2"
+                    value={formData.title}
+                    onChange={(e) => handleFieldChange("title", e.target.value)}
+                  />
+                  {renderFieldError("title")}
+                </div>
+                <div>
+                  <label style={formStyles.label}>Project Scope *</label>
+                  <select
+                    style={getInputStyle("projectScope")}
+                    value={formData.projectScope}
+                    onChange={(e) =>
+                      handleFieldChange("projectScope", e.target.value)
+                    }
+                    disabled={
+                      !formData.category || !selectedCategory?.scopes?.length
+                    }
+                  >
+                    <option value="">
+                      {!formData.category
+                        ? "Select a category first"
+                        : !selectedCategory?.scopes?.length
+                          ? "No scopes defined for this category"
+                          : "— Select scope —"}
                     </option>
-                  ))}
-                </select>
-                {renderFieldError("projectScope")}
+                    {(selectedCategory?.scopes || []).map((scope) => (
+                      <option key={scope} value={scope}>
+                        {scope}
+                      </option>
+                    ))}
+                  </select>
+                  {renderFieldError("projectScope")}
+                </div>
               </div>
 
               <div style={{ marginBottom: "1rem" }}>

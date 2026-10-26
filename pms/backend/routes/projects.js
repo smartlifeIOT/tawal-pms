@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const Project = require("../models/Project");
 const Category = require("../models/Category");
+const Program = require("../models/Program");
 const User = require("../models/User");
 const { protect, authorize } = require("../middleware/auth");
 
@@ -9,8 +10,17 @@ const { protect, authorize } = require("../middleware/auth");
 router.get("/", protect, async (req, res) => {
   try {
     const { role, email } = req.user;
-    const { search, category, status, priority, region, city, page, limit } =
-      req.query;
+    const {
+      search,
+      category,
+      program,
+      status,
+      priority,
+      region,
+      city,
+      page,
+      limit,
+    } = req.query;
     const fullAccessRoles = ["Admin", "Manager", "PM"];
 
     let query = {};
@@ -30,6 +40,9 @@ router.get("/", protect, async (req, res) => {
 
     if (category && category !== "All Categories") {
       query.category = category;
+    }
+    if (program && program !== "All Programs") {
+      query.program = program;
     }
     if (status && status !== "All Statuses") {
       query.status = status;
@@ -73,7 +86,8 @@ router.get("/", protect, async (req, res) => {
 // Handler: Get all projects without authentication (public access)
 const getPublicProjects = async (req, res) => {
   try {
-    const { search, category, status, priority, region, city } = req.query;
+    const { search, category, program, status, priority, region, city } =
+      req.query;
 
     let query = {};
 
@@ -89,6 +103,9 @@ const getPublicProjects = async (req, res) => {
 
     if (category && category !== "All Categories") {
       query.category = category;
+    }
+    if (program && program !== "All Programs") {
+      query.program = program;
     }
     if (status && status !== "All Statuses") {
       query.status = status;
@@ -147,6 +164,60 @@ router.get("/category/:category", protect, async (req, res) => {
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
+      },
+      data: projects,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get projects by program (role-based)
+router.get("/program/:program", protect, async (req, res) => {
+  try {
+    const { role, email } = req.user;
+    const { page, limit, category, status, priority, search } = req.query;
+    const fullAccessRoles = ["Admin", "Manager", "PM"];
+
+    let query = { program: req.params.program };
+    if (!fullAccessRoles.includes(role)) {
+      query.teamMembers = email;
+    }
+
+    if (category && category !== "All Categories") {
+      query.category = category;
+    }
+    if (status && status !== "All Statuses") {
+      query.status = status;
+    }
+    if (priority && priority !== "All Priorities") {
+      query.priority = priority;
+    }
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { siteId: { $regex: search, $options: "i" } },
+        { tawalId: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const pageNum = parseInt(page) || 1;
+    const limitNum = parseInt(limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
+
+    const total = await Project.countDocuments(query);
+    const projects = await Project.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    res.status(200).json({
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum) || 1,
       },
       data: projects,
     });
@@ -223,17 +294,22 @@ router.get("/filters", protect, async (req, res) => {
       ? {}
       : { teamMembers: email };
 
-    const [regions, cities] = await Promise.all([
+    const [regions, cities, programs] = await Promise.all([
       Project.distinct("region", {
         ...baseFilter,
         region: { $nin: [null, ""] },
       }),
       Project.distinct("city", { ...baseFilter, city: { $nin: [null, ""] } }),
+      Project.distinct("program", {
+        ...baseFilter,
+        program: { $nin: [null, ""] },
+      }),
     ]);
 
     res.status(200).json({
       regions: regions.filter(Boolean).sort(),
       cities: cities.filter(Boolean).sort(),
+      programs: programs.filter(Boolean).sort(),
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -277,6 +353,13 @@ router.post(
       const categoryMap = new Map();
       allCategories.forEach((cat) => {
         categoryMap.set(cat.name.trim().toLowerCase(), cat);
+      });
+
+      // Pre-fetch all programs once for fast case-insensitive lookup
+      const allPrograms = await Program.find().lean();
+      const programMap = new Map();
+      allPrograms.forEach((prog) => {
+        programMap.set(prog.name.trim().toLowerCase(), prog);
       });
 
       // Fetch all existing user emails once for fast validation
@@ -438,6 +521,7 @@ router.post(
         }
 
         const {
+          program,
           category,
           projectScope = "",
           scope = "",
@@ -454,6 +538,25 @@ router.post(
         }
 
         projectData.title = String(projectData.title).trim();
+
+        // Validate Program if provided
+        let targetProg = null;
+        if (program && String(program).trim() !== "") {
+          const progKey = String(program).trim().toLowerCase();
+          targetProg = programMap.get(progKey);
+          if (!targetProg) {
+            const availableProgs = Array.from(programMap.values())
+              .map((p) => p.name)
+              .join(", ");
+            return next(
+              new ErrorResponse(
+                `Project "${projectData.title}" (row ${i + 1}): Program "${program}" does not exist. Available programs: ${availableProgs || "None"}`,
+                400,
+              ),
+            );
+          }
+          projectData.program = targetProg.name;
+        }
 
         // Validate teamLead email exists in database
         if (typeof teamLead === "string" && teamLead.trim() !== "") {
@@ -505,10 +608,30 @@ router.post(
 
           projectData.category = cat.name;
 
+          // If project did not specify program, auto-assign from category if category has one
+          if (!projectData.program && cat.program) {
+            projectData.program = cat.program;
+            targetProg = programMap.get(cat.program.trim().toLowerCase());
+          }
+
+          // If both program and category are provided, verify category belongs to that program
+          if (
+            projectData.program &&
+            cat.program &&
+            cat.program.trim().toLowerCase() !== projectData.program.toLowerCase()
+          ) {
+            return next(
+              new ErrorResponse(
+                `Project "${projectData.title}" (row ${i + 1}): Category "${cat.name}" belongs to program "${cat.program}", but program "${projectData.program}" was specified in the file`,
+                400,
+              ),
+            );
+          }
+
           if (budget > cat.budget) {
             return next(
               new ErrorResponse(
-                `Project "${projectData.title}" budget (${budget}) cannot exceed category budget (${cat.budget})`,
+                `Project "${projectData.title}" (row ${i + 1}) budget (${budget}) cannot exceed category budget (${cat.budget})`,
                 400,
               ),
             );
@@ -517,7 +640,7 @@ router.post(
           if (spent > cat.budget) {
             return next(
               new ErrorResponse(
-                `Project "${projectData.title}" spent (${spent}) cannot exceed category budget (${cat.budget})`,
+                `Project "${projectData.title}" (row ${i + 1}) spent (${spent}) cannot exceed category budget (${cat.budget})`,
                 400,
               ),
             );
@@ -549,6 +672,39 @@ router.post(
           }
         } else if (scopeToUse !== "") {
           projectData.projectScope = scopeToUse;
+        }
+
+        // Program is required for every project
+        if (!projectData.program || String(projectData.program).trim() === "") {
+          const availableProgs = Array.from(programMap.values())
+            .map((p) => p.name)
+            .join(", ");
+          return next(
+            new ErrorResponse(
+              `Project "${projectData.title}" (row ${i + 1}) requires a program. Please specify a valid program column. Available programs: ${availableProgs || "None"}`,
+              400,
+            ),
+          );
+        }
+
+        // Validate budget against program budget
+        if (targetProg && targetProg.budget > 0) {
+          if (budget > targetProg.budget) {
+            return next(
+              new ErrorResponse(
+                `Project "${projectData.title}" (row ${i + 1}) budget (${budget}) cannot exceed program budget (${targetProg.budget}) of program "${targetProg.name}"`,
+                400,
+              ),
+            );
+          }
+          if (spent > targetProg.budget) {
+            return next(
+              new ErrorResponse(
+                `Project "${projectData.title}" (row ${i + 1}) spent (${spent}) cannot exceed program budget (${targetProg.budget}) of program "${targetProg.name}"`,
+                400,
+              ),
+            );
+          }
         }
 
         validatedProjects.push(projectData);
@@ -607,7 +763,9 @@ router.post(
         ...new Set(stcIds.map((id) => String(id ?? "").trim()).filter(Boolean)),
       ];
       const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const idRegexes = cleanIds.map((id) => new RegExp(`^${escape(id)}$`, "i"));
+      const idRegexes = cleanIds.map(
+        (id) => new RegExp(`^${escape(id)}$`, "i"),
+      );
 
       const boqDate = date ? new Date(date) : new Date();
       if (Number.isNaN(boqDate.getTime())) {
@@ -636,7 +794,11 @@ router.post(
       }
 
       const matchedIds = new Set(
-        projects.map((p) => String(p.siteId || "").trim().toLowerCase()),
+        projects.map((p) =>
+          String(p.siteId || "")
+            .trim()
+            .toLowerCase(),
+        ),
       );
       const unmatched = cleanIds.filter(
         (id) => !matchedIds.has(id.toLowerCase()),
@@ -680,9 +842,14 @@ router.post(
         const woNumber = String(row.woNumber ?? "").trim();
         const date = row.date ? new Date(row.date) : null;
 
-        if (!siteId) return invalid.push({ row: rowNo, reason: "Missing Site ID" });
+        if (!siteId)
+          return invalid.push({ row: rowNo, reason: "Missing Site ID" });
         if (!woNumber)
-          return invalid.push({ row: rowNo, siteId, reason: "Missing WO Number" });
+          return invalid.push({
+            row: rowNo,
+            siteId,
+            reason: "Missing WO Number",
+          });
         if (row.date && Number.isNaN(date.getTime()))
           return invalid.push({ row: rowNo, siteId, reason: "Invalid date" });
 
@@ -701,7 +868,9 @@ router.post(
       const updated = [];
       const matched = new Set();
       for (const project of projects) {
-        const key = String(project.siteId || "").trim().toLowerCase();
+        const key = String(project.siteId || "")
+          .trim()
+          .toLowerCase();
         const entry = bySite.get(key);
         if (!entry) continue;
         matched.add(key);
@@ -806,13 +975,19 @@ router.post(
       for (const item of items) {
         const fileUrl = String(item.fileUrl || "").trim();
         if (!item.projectId || !fileUrl) {
-          failed.push({ projectId: item.projectId, reason: "Missing project or file" });
+          failed.push({
+            projectId: item.projectId,
+            reason: "Missing project or file",
+          });
           continue;
         }
         try {
           const project = await Project.findById(item.projectId);
           if (!project) {
-            failed.push({ projectId: item.projectId, reason: "Project not found" });
+            failed.push({
+              projectId: item.projectId,
+              reason: "Project not found",
+            });
             continue;
           }
           project.set("mapping.woRequest.status", "Requested");
@@ -851,6 +1026,7 @@ router.post("/", protect, authorize("Admin", "Manager"), async (req, res) => {
   try {
     const {
       category,
+      program = "",
       projectScope = "",
       scope = "",
       siteId,
@@ -858,6 +1034,7 @@ router.post("/", protect, authorize("Admin", "Manager"), async (req, res) => {
       budget = 0,
       spent = 0,
     } = req.body;
+    req.body.program = String(program || "").trim();
     const scopeToUse = String(projectScope || scope || "").trim();
 
     if (category) {
@@ -930,6 +1107,134 @@ router.post("/", protect, authorize("Admin", "Manager"), async (req, res) => {
   }
 });
 
+// Bulk update projects (program, category, projectScope) - Admin, Manager, PM
+const handleBulkUpdate = async (req, res) => {
+  try {
+    const ids =
+      req.body.ids ||
+      req.body.projectIds ||
+      (Array.isArray(req.body) ? req.body : []);
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        message: "Please provide an array of project IDs to update",
+      });
+    }
+
+    const { program, category, projectScope } = req.body;
+
+    if (!program && !category) {
+      return res.status(400).json({
+        message: "Please provide at least a program or category to update",
+      });
+    }
+
+    const updateFields = {};
+
+    if (program !== undefined && String(program).trim() !== "") {
+      const trimmedProgram = String(program).trim();
+      const prog = await Program.findOne({
+        name: new RegExp(
+          `^${trimmedProgram.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          "i",
+        ),
+      });
+      if (!prog) {
+        return res.status(404).json({
+          message: `Program "${trimmedProgram}" not found`,
+        });
+      }
+      updateFields.program = prog.name;
+    }
+
+    if (category !== undefined && String(category).trim() !== "") {
+      const trimmedCategory = String(category).trim();
+      const cat = await Category.findOne({
+        name: new RegExp(
+          `^${trimmedCategory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+          "i",
+        ),
+      });
+      if (!cat) {
+        return res.status(404).json({
+          message: `Category "${trimmedCategory}" not found`,
+        });
+      }
+
+      // Check if any selected project has budget exceeding this category's budget
+      const overbudgetProjects = await Project.find({
+        _id: { $in: ids },
+        budget: { $gt: cat.budget },
+      }).select("title budget");
+
+      if (overbudgetProjects.length > 0) {
+        return res.status(400).json({
+          message: `Cannot assign category "${cat.name}" (budget ₡${(cat.budget || 0).toLocaleString()}): ${overbudgetProjects.length} selected project(s) exceed category budget (${overbudgetProjects.map((p) => `"${p.title}": ₡${(p.budget || 0).toLocaleString()}`).slice(0, 3).join(", ")}${overbudgetProjects.length > 3 ? "..." : ""})`,
+        });
+      }
+
+      updateFields.category = cat.name;
+      updateFields.categoryBudget = cat.budget || 0;
+
+      // If program was not explicitly provided, use the category's assigned program
+      if (!updateFields.program && cat.program) {
+        updateFields.program = cat.program;
+      }
+
+      // Handle projectScope if provided
+      if (projectScope !== undefined) {
+        const trimmedScope = String(projectScope).trim();
+        if (trimmedScope !== "") {
+          const catScopes = cat.scopes || [];
+          if (catScopes.length > 0) {
+            const matchedScope = catScopes.find(
+              (s) => s.trim().toLowerCase() === trimmedScope.toLowerCase(),
+            );
+            if (!matchedScope) {
+              return res.status(400).json({
+                message: `Scope "${trimmedScope}" is invalid for category "${cat.name}". Valid scope(s): ${catScopes.join(", ")}`,
+              });
+            }
+            updateFields.projectScope = matchedScope;
+          } else {
+            updateFields.projectScope = trimmedScope;
+          }
+        } else {
+          updateFields.projectScope = "";
+        }
+      }
+    } else if (projectScope !== undefined) {
+      updateFields.projectScope = String(projectScope).trim();
+    }
+
+    const result = await Project.updateMany(
+      { _id: { $in: ids } },
+      { $set: updateFields },
+    );
+
+    res.status(200).json({
+      message: `${result.modifiedCount} project(s) updated successfully`,
+      modifiedCount: result.modifiedCount,
+      matchedCount: result.matchedCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+router.post(
+  "/bulk-update",
+  protect,
+  authorize("Admin", "Manager", "PM"),
+  handleBulkUpdate,
+);
+router.put(
+  "/bulk-update",
+  protect,
+  authorize("Admin", "Manager", "PM"),
+  handleBulkUpdate,
+);
+
 // Update a project (roles that can edit at least one module — aligned with frontend)
 router.put(
   "/:id",
@@ -954,6 +1259,10 @@ router.put(
         spent = 0,
       } = req.body;
       const scopeToUse = String(projectScope || scope || "").trim();
+
+      if (req.body.program !== undefined) {
+        req.body.program = String(req.body.program || "").trim();
+      }
 
       if (category) {
         const cat = await Category.findOne({
@@ -994,7 +1303,13 @@ router.put(
           } else {
             req.body.projectScope = scopeToUse;
           }
+        } else {
+          req.body.projectScope = "";
         }
+      } else if (scopeToUse !== "") {
+        req.body.projectScope = scopeToUse;
+      } else if (projectScope !== undefined) {
+        req.body.projectScope = "";
       }
 
       if (

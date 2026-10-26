@@ -5,8 +5,16 @@ const CategorySchema = new mongoose.Schema(
     name: {
       type: String,
       required: [true, "Category name is required"],
-      unique: true,
       trim: true,
+    },
+    program: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    programBudget: {
+      type: Number,
+      default: 0,
     },
     budget: {
       type: Number,
@@ -20,5 +28,7 @@ const CategorySchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+CategorySchema.index({ program: 1, name: 1 }, { unique: true });
 
 module.exports = mongoose.model("Category", CategorySchema);

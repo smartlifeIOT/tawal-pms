@@ -7,6 +7,7 @@ import {
   useProjectById,
   useUpdateProject,
   useCategories,
+  usePrograms,
 } from "../hooks/project";
 import { useMemo } from "react";
 import ConfirmModal from "../components/ConfirmModal";
@@ -78,16 +79,52 @@ export default function ProjectDetails() {
   });
   const updateMutation = useUpdateProject();
   const { data: categories = [] } = useCategories();
-  // Scopes available for the project's category
-  const categoryScopes = useMemo(() => {
-    const cat = categories.find(
-      (c) => c.name === (project?.category || form?.category),
+  const { data: programs = [] } = usePrograms();
+  const availableCategories = useMemo(() => {
+    if (!form.program) return categories;
+    return categories.filter(
+      (cat) => !cat.program || cat.program === form.program,
     );
+  }, [categories, form.program]);
+
+  // Scopes available for the project's category (form.category takes precedence during edit)
+  const categoryScopes = useMemo(() => {
+    const selectedCategoryName = form?.category || project?.category;
+    const cat = categories.find((c) => c.name === selectedCategoryName);
     return cat?.scopes || [];
-  }, [categories, project?.category, form?.category]);
+  }, [categories, form?.category, project?.category]);
+
+  const handleProgramChange = (newProgram) => {
+    const validCats = categories.filter(
+      (c) => !c.program || c.program === newProgram,
+    );
+    const isCatValid = validCats.some((c) => c.name === form.category);
+    setForm((prev) => ({
+      ...prev,
+      program: newProgram,
+      category: isCatValid ? prev.category : "",
+      projectScope: isCatValid ? prev.projectScope : "",
+    }));
+  };
+
+  const handleCategoryChange = (newCategory) => {
+    const targetCat = categories.find((c) => c.name === newCategory);
+    const scopes = targetCat?.scopes || [];
+    const newScope = scopes.includes(form.projectScope)
+      ? form.projectScope
+      : "";
+    setForm((prev) => ({
+      ...prev,
+      category: newCategory,
+      projectScope: newScope,
+    }));
+  };
+
   React.useEffect(() => {
     if (project)
       setForm({
+        program: project.program || "",
+        category: project.category || "",
         title: project.title || "",
         description: project.description || "",
         projectScope: project.projectScope || "",
@@ -290,6 +327,9 @@ export default function ProjectDetails() {
       // Ensure tags are sent as an array and dates are preserved
       const payload = {
         ...form,
+        program: form.program ? form.program.trim() : "",
+        category: form.category ? form.category.trim() : "",
+        projectScope: form.projectScope ? form.projectScope.trim() : "",
         tags:
           typeof form.tags === "string"
             ? form.tags
@@ -425,16 +465,37 @@ export default function ProjectDetails() {
             margin: 0,
             fontSize: "1.25rem",
             textTransform: "capitalize",
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "0.5rem",
           }}
         >
           {project.title}
-          <span
-            className={`badge ${getCatBadge(project.category)}`}
-            style={{ marginRight: "0.5rem" }}
-          >
-            {project.category}
-          </span>
-          {project.projectScope && (
+          {(form.program || project.program) && (
+            <span
+              style={{
+                display: "inline-block",
+                background: "#fef3c7",
+                color: "#92400e",
+                fontSize: "0.72rem",
+                fontWeight: "600",
+                padding: "0.2rem 0.6rem",
+                borderRadius: "9999px",
+                border: "1px solid #fde68a",
+              }}
+            >
+              {form.program || project.program}
+            </span>
+          )}
+          {(form.category || project.category) && (
+            <span
+              className={`badge ${getCatBadge(form.category || project.category)}`}
+            >
+              {form.category || project.category}
+            </span>
+          )}
+          {(form.projectScope || project.projectScope) && (
             <span
               style={{
                 display: "inline-block",
@@ -445,10 +506,9 @@ export default function ProjectDetails() {
                 padding: "0.2rem 0.6rem",
                 borderRadius: "9999px",
                 border: "1px solid #c7d2fe",
-                marginRight: "0.5rem",
               }}
             >
-              {project.projectScope}
+              {form.projectScope || project.projectScope}
             </span>
           )}
         </h2>
@@ -469,6 +529,8 @@ export default function ProjectDetails() {
                     onClick={() => {
                       setEditMode(false);
                       setForm({
+                        program: project.program || "",
+                        category: project.category || "",
                         title: project.title || "",
                         description: project.description || "",
                         projectScope: project.projectScope || "",
@@ -725,6 +787,147 @@ export default function ProjectDetails() {
           />
         </div>
       </div>
+
+      {/* Edit Classification Banner when in Edit Mode */}
+      {editMode && isFullEditor && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: "1rem 1.25rem",
+            marginBottom: "1rem",
+            background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            border: "1.5px solid #c7d2fe",
+            borderRadius: "0.75rem",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: "700",
+              color: "#3730a3",
+              marginBottom: "0.75rem",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}
+          >
+            <span>Edit Project Hierarchy & Scope</span>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "1rem",
+            }}
+          >
+            <div>
+              <label
+                className="form-label"
+                style={{
+                  fontWeight: "600",
+                  fontSize: "0.8rem",
+                  color: "#475569",
+                }}
+              >
+                Program
+              </label>
+              <select
+                className="form-select"
+                value={form.program || ""}
+                onChange={(e) => handleProgramChange(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "#fff",
+                  marginTop: "0.25rem",
+                }}
+              >
+                <option value="">— Select Program —</option>
+                {programs.map((prog) => (
+                  <option key={prog._id} value={prog.name}>
+                    {prog.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                className="form-label"
+                style={{
+                  fontWeight: "600",
+                  fontSize: "0.8rem",
+                  color: "#475569",
+                }}
+              >
+                Category
+              </label>
+              <select
+                className="form-select"
+                value={form.category || ""}
+                onChange={(e) => handleCategoryChange(e.target.value)}
+                disabled={!form.program}
+                style={{
+                  width: "100%",
+                  background: "#fff",
+                  marginTop: "0.25rem",
+                }}
+              >
+                <option value="">
+                  {!form.program
+                    ? "— Select a Program First —"
+                    : availableCategories.length === 0
+                      ? "— No Categories in Program —"
+                      : "— Select Category —"}
+                </option>
+                {availableCategories.map((cat) => (
+                  <option key={cat._id} value={cat.name}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                className="form-label"
+                style={{
+                  fontWeight: "600",
+                  fontSize: "0.8rem",
+                  color: "#475569",
+                }}
+              >
+                Project Scope
+              </label>
+              <select
+                className="form-select"
+                value={form.projectScope || ""}
+                onChange={(e) =>
+                  setForm({ ...form, projectScope: e.target.value })
+                }
+                disabled={!categoryScopes.length}
+                style={{
+                  width: "100%",
+                  background: "#fff",
+                  marginTop: "0.25rem",
+                }}
+              >
+                <option value="">
+                  {!form.category
+                    ? "Select a category first"
+                    : !categoryScopes.length
+                      ? "No scopes defined for this category"
+                      : "— Select Scope —"}
+                </option>
+                {categoryScopes.map((scope) => (
+                  <option key={scope} value={scope}>
+                    {scope}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         className="glass-panel"
         style={{ padding: "1.25rem 1.5rem", marginBottom: "1rem" }}
@@ -993,6 +1196,145 @@ export default function ProjectDetails() {
                 marginTop: "1rem",
               }}
             >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <label
+                  className="form-label"
+                  style={{ fontSize: "0.8rem", fontWeight: "600" }}
+                >
+                  Program
+                </label>
+                {editMode && isFullEditor ? (
+                  <select
+                    className="form-select"
+                    value={form.program || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, program: e.target.value })
+                    }
+                    style={{
+                      fontSize: "0.8rem",
+                      padding: "0.25rem 0.5rem",
+                      maxWidth: "160px",
+                    }}
+                  >
+                    <option value="">— Select Program —</option>
+                    {programs.map((prog) => (
+                      <option key={prog._id} value={prog.name}>
+                        {prog.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: "600",
+                      color: "#4338ca",
+                    }}
+                  >
+                    {project.program || "—"}
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <label
+                  className="form-label"
+                  style={{ fontSize: "0.8rem", fontWeight: "600" }}
+                >
+                  Category
+                </label>
+                {editMode && isFullEditor ? (
+                  <select
+                    className="form-select"
+                    value={form.category || ""}
+                    onChange={(e) => handleCategoryChange(e.target.value)}
+                    style={{
+                      fontSize: "0.8rem",
+                      padding: "0.25rem 0.5rem",
+                      maxWidth: "160px",
+                    }}
+                  >
+                    <option value="">— Select Category —</option>
+                    {categories.map((cat) => (
+                      <option key={cat._id} value={cat.name}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div style={{ fontSize: "0.8rem", fontWeight: "600" }}>
+                    {project.category || "—"}
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "10px",
+                }}
+              >
+                <label
+                  className="form-label"
+                  style={{ fontSize: "0.8rem", fontWeight: "600" }}
+                >
+                  Project Scope
+                </label>
+                {editMode && isFullEditor ? (
+                  <select
+                    className="form-select"
+                    value={form.projectScope || ""}
+                    onChange={(e) =>
+                      setForm({ ...form, projectScope: e.target.value })
+                    }
+                    disabled={!categoryScopes.length}
+                    style={{
+                      fontSize: "0.8rem",
+                      padding: "0.25rem 0.5rem",
+                      maxWidth: "160px",
+                    }}
+                  >
+                    <option value="">
+                      {!form.category
+                        ? "Select category"
+                        : !categoryScopes.length
+                          ? "No scopes"
+                          : "— Select Scope —"}
+                    </option>
+                    {categoryScopes.map((scope) => (
+                      <option key={scope} value={scope}>
+                        {scope}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      fontWeight: "600",
+                      color: "#3730a3",
+                    }}
+                  >
+                    {project.projectScope || "—"}
+                  </div>
+                )}
+              </div>
               <div
                 style={{
                   display: "flex",

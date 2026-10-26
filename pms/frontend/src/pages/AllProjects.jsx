@@ -4,12 +4,15 @@ import { useAuthStore } from "../store/authStore";
 import {
   useProjectsHook,
   useCategories,
+  usePrograms,
   useUploadProjectsBulk,
   useBulkDeleteProjects,
+  useBulkUpdateProjects,
   useProjectFilters,
 } from "../hooks/project";
 import ProjectForm from "../components/ProjectForm";
 import ConfirmModal from "../components/ConfirmModal";
+import BulkUpdateProgramCategoryModal from "../components/BulkUpdateProgramCategoryModal";
 import ImportIssuedWoModal from "../components/ImportIssuedWoModal";
 import ImportWoMappingModal from "../components/ImportWoMappingModal";
 import Spinner from "../components/Spinner";
@@ -17,6 +20,7 @@ import { formatDate } from "../utils/date";
 import {
   Download,
   FolderOpen,
+  FolderKanban,
   LayoutGrid,
   List as ListIcon,
   Trash2,
@@ -31,12 +35,18 @@ import ProjectCard from "../components/ProjectCard";
 import { getCatBadge, getPriorityBadge } from "../utils/helpers";
 import { getStatusColor } from "../utils/statusColor";
 import toast from "react-hot-toast";
-import { parseProjectsFile, exportToExcel, exportToCSV } from "../utils/parse";
+import {
+  parseProjectsFile,
+  exportToExcel,
+  exportToCSV,
+  downloadProjectsTemplate,
+} from "../utils/parse";
 import { useDebounce } from "../hooks/useDebounce";
 
 const AllProjects = () => {
   const uploadProjectsData = useUploadProjectsBulk();
   const bulkDeleteMutation = useBulkDeleteProjects();
+  const bulkUpdateMutation = useBulkUpdateProjects();
 
   const { user } = useAuthStore();
   const canManageProjects =
@@ -45,6 +55,7 @@ const AllProjects = () => {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [isBulkUpdateModalOpen, setIsBulkUpdateModalOpen] = useState(false);
   const [isImportWoOpen, setIsImportWoOpen] = useState(false);
   const [isImportMappingOpen, setIsImportMappingOpen] = useState(false);
   const fileInputRef = useRef(null);
@@ -58,6 +69,7 @@ const AllProjects = () => {
   const debouncedSearchQuery = useDebounce(searchQuery, 500);
 
   const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [programFilter, setProgramFilter] = useState("All Programs");
   const [statusFilter, setStatusFilter] = useState("All Statuses");
   const [priorityFilter, setPriorityFilter] = useState("All Priorities");
   const [regionFilter, setRegionFilter] = useState("");
@@ -91,6 +103,7 @@ const AllProjects = () => {
   } = useProjectsHook({
     search: debouncedSearchQuery,
     category: categoryFilter,
+    program: programFilter,
     status: statusFilter,
     priority: priorityFilter,
     region: regionFilter,
@@ -103,6 +116,7 @@ const AllProjects = () => {
   const countOfProjects = projectsData?.meta?.total || 0;
   const totalPages = projectsData?.meta?.totalPages || 1;
   const { data: categories = [] } = useCategories();
+  const { data: programs = [] } = usePrograms();
   const { data: filters } = useProjectFilters();
   const regions = filters?.regions || [];
   const cities = filters?.cities || [];
@@ -145,6 +159,26 @@ const AllProjects = () => {
       setIsBulkDeleteModalOpen(false);
     } catch (err) {
       console.error("Bulk delete error", err);
+    }
+  };
+
+  const handleConfirmBulkUpdate = async ({
+    program,
+    category,
+    projectScope,
+  }) => {
+    if (selectedIds.length === 0) return;
+    try {
+      await bulkUpdateMutation.mutateAsync({
+        ids: selectedIds,
+        program,
+        category,
+        projectScope,
+      });
+      setSelectedIds([]);
+      setIsBulkUpdateModalOpen(false);
+    } catch (err) {
+      console.error("Bulk update error", err);
     }
   };
 
@@ -269,6 +303,30 @@ const AllProjects = () => {
                     toast.error("No valid projects found in the uploaded file");
                     return;
                   }
+
+                  // Client-side pre-validation: check title and program
+                  for (let i = 0; i < parsed.length; i++) {
+                    const row = parsed[i];
+                    if (!row.title || !String(row.title).trim()) {
+                      toast.error(`Row ${i + 2}: Project title is required`);
+                      return;
+                    }
+
+                    // Check if program is provided or can be resolved from category
+                    if (!row.program || !String(row.program).trim()) {
+                      const matchedCat = categories.find(
+                        (c) =>
+                          c.name?.toLowerCase() === row.category?.toLowerCase(),
+                      );
+                      if (!matchedCat || !matchedCat.program) {
+                        toast.error(
+                          `Row ${i + 2} ("${row.title}"): Program is required in the file headers/column`,
+                        );
+                        return;
+                      }
+                    }
+                  }
+
                   await uploadProjectsData.mutateAsync({ projects: parsed });
                 } catch (err) {
                   const msg =
@@ -299,6 +357,20 @@ const AllProjects = () => {
             </button>
             <button
               className="btn btn-secondary"
+              onClick={() => downloadProjectsTemplate("xlsx")}
+              title="Download Excel template (.xlsx) with Program, Category, and Scope headers"
+            >
+              <Download size={15} /> Template (.xlsx)
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => downloadProjectsTemplate("csv")}
+              title="Download CSV template (.csv) with Program, Category, and Scope headers"
+            >
+              <Download size={15} /> Template (.csv)
+            </button>
+            <button
+              className="btn btn-secondary"
               onClick={() => setIsImportMappingOpen(true)}
               title="Upload one sheet for many sites — split per Site ID, attached as each project's mapping file, WO Request set to Requested"
             >
@@ -314,14 +386,14 @@ const AllProjects = () => {
             <button
               className="btn btn-secondary"
               onClick={() => exportToExcel(projects, "projects_export.xlsx")}
-              title="Download as Excel (.xlsx)"
+              title="Download as Excel (.xlsx) including Program column"
             >
               <FileSpreadsheet size={15} /> Export Excel
             </button>
             <button
               className="btn btn-secondary"
               onClick={() => exportToCSV(projects, "projects_export.csv")}
-              title="Download as CSV (.csv)"
+              title="Download as CSV (.csv) including Program column"
             >
               <Download size={15} /> Export CSV
             </button>
@@ -371,23 +443,43 @@ const AllProjects = () => {
             </button>
           </div>
 
-          {canDeleteProjects && (
-            <button
-              type="button"
-              className="btn btn-danger"
-              onClick={() => setIsBulkDeleteModalOpen(true)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                fontSize: "0.85rem",
-                padding: "0.45rem 1rem",
-              }}
-            >
-              <Trash2 size={15} />
-              Delete Selected ({selectedIds.length})
-            </button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {canManageProjects && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => setIsBulkUpdateModalOpen(true)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  fontSize: "0.85rem",
+                  padding: "0.45rem 1rem",
+                }}
+              >
+                <FolderKanban size={15} />
+                Update Program & Category ({selectedIds.length})
+              </button>
+            )}
+
+            {canDeleteProjects && (
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={() => setIsBulkDeleteModalOpen(true)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  fontSize: "0.85rem",
+                  padding: "0.45rem 1rem",
+                }}
+              >
+                <Trash2 size={15} />
+                Delete Selected ({selectedIds.length})
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -457,6 +549,27 @@ const AllProjects = () => {
           {cities.map((c) => (
             <option key={c} value={c}>
               {c}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={programFilter}
+          onChange={(e) => handleFilterChange(setProgramFilter)(e.target.value)}
+          style={{
+            padding: "0.5rem 1rem",
+            borderRadius: "0.4rem",
+            border: "1px solid #e2e8f0",
+            background: "white",
+            outline: "none",
+            cursor: "pointer",
+            minWidth: "140px",
+          }}
+        >
+          <option value="All Programs">All Programs</option>
+          {programs.map((prog) => (
+            <option key={prog._id} value={prog.name}>
+              {prog.name}
             </option>
           ))}
         </select>
@@ -626,6 +739,7 @@ const AllProjects = () => {
                   </th>
                 )}
                 <th style={{ padding: "0.85rem 1rem" }}>Project</th>
+                <th style={{ padding: "0.85rem 1rem" }}>Program</th>
                 <th style={{ padding: "0.85rem 1rem" }}>Category</th>
                 <th style={{ padding: "0.85rem 1rem" }}>Scope</th>
                 <th style={{ padding: "0.85rem 1rem" }}>Status</th>
@@ -716,6 +830,26 @@ const AllProjects = () => {
                           {proj.siteId && <span>Site: {proj.siteId} </span>}
                           {proj.tawalId && <span>• Tawal: {proj.tawalId}</span>}
                         </div>
+                      )}
+                    </td>
+                    <td style={{ padding: "0.85rem 1rem" }}>
+                      {proj.program ? (
+                        <span
+                          style={{
+                            display: "inline-block",
+                            background: "#fef3c7",
+                            color: "#92400e",
+                            fontSize: "0.75rem",
+                            fontWeight: "600",
+                            padding: "0.2rem 0.6rem",
+                            borderRadius: "9999px",
+                            border: "1px solid #fde68a",
+                          }}
+                        >
+                          {proj.program}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#94a3b8" }}>—</span>
                       )}
                     </td>
                     <td style={{ padding: "0.85rem 1rem" }}>
@@ -885,6 +1019,14 @@ const AllProjects = () => {
         title="Delete Projects"
         message={`Are you sure you want to delete ${selectedIds.length} selected project(s)? This action cannot be undone.`}
         isLoading={bulkDeleteMutation.isPending}
+      />
+
+      <BulkUpdateProgramCategoryModal
+        isOpen={isBulkUpdateModalOpen}
+        onClose={() => setIsBulkUpdateModalOpen(false)}
+        selectedCount={selectedIds.length}
+        onConfirm={handleConfirmBulkUpdate}
+        isLoading={bulkUpdateMutation.isPending}
       />
 
       {/* Pagination & Limit Controls */}

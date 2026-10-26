@@ -276,7 +276,7 @@ function TaskItem({ task }) {
       await apiInstance.put(`${API_BASE}/projects/${project._id}`, payload);
       toast.success(`${meta.label} task submitted successfully`);
       setExpanded(false);
-      queryClient.invalidateQueries(["projects"]);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to submit task");
     } finally {

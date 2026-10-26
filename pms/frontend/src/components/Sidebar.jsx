@@ -10,13 +10,14 @@ import {
   ClipboardList,
   MapPinned,
   FileSpreadsheet,
+  Layers,
 } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
-import { useCategories } from "../hooks/project";
+import { usePrograms } from "../hooks/project";
 import { useQueryClient } from "@tanstack/react-query";
 import logo from "../assets/logo.png";
 export default function Sidebar() {
-  const { data: categories = [], isLoading } = useCategories();
+  const { data: programs = [], isLoading } = usePrograms();
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -108,10 +109,9 @@ export default function Sidebar() {
           <span>BOQ Processor</span>
         </NavLink>
 
-        {/* Category links — hidden for Coordinator */}
-
+        {/* Program links */}
         <>
-          <div className="sidebar-heading">Categories</div>
+          <div className="sidebar-heading">Programs</div>
           {isLoading ? (
             <div
               style={{
@@ -122,17 +122,17 @@ export default function Sidebar() {
             >
               Loading...
             </div>
-          ) : categories.length > 0 ? (
-            categories.map((category) => (
+          ) : programs.length > 0 ? (
+            programs.map((program) => (
               <NavLink
-                key={category._id}
-                to={`/category/${category.name}`}
+                key={program._id}
+                to={`/program/${encodeURIComponent(program.name)}`}
                 className={({ isActive }) =>
                   `nav-item ${isActive ? "active" : ""}`
                 }
               >
-                <Radio size={20} />
-                <span>{category.name}</span>
+                <Layers size={20} />
+                <span>{program.name}</span>
               </NavLink>
             ))
           ) : (
@@ -143,7 +143,7 @@ export default function Sidebar() {
                 fontSize: "0.875rem",
               }}
             >
-              No categories
+              No programs
             </div>
           )}
         </>
@@ -152,6 +152,15 @@ export default function Sidebar() {
         {user?.role === "Admin" && (
           <>
             <div className="sidebar-heading">Management</div>
+            <NavLink
+              to="/programs"
+              className={({ isActive }) =>
+                `nav-item ${isActive ? "active" : ""}`
+              }
+            >
+              <Layers size={20} />
+              <span>Manage Programs</span>
+            </NavLink>
             <NavLink
               to="/categories"
               className={({ isActive }) =>

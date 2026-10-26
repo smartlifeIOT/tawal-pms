@@ -12,7 +12,7 @@ export const useRegister = () => {
         .post(`${API_BASE}/auth/register`, ...registerData)
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["users"]);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       toast.success("User registered successfully");
     },
     onError: (error) => {
@@ -38,7 +38,7 @@ export const useUpdateRole = () => {
         .put(`${API_BASE}/auth/update-role/${id}`, { role })
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["users"]);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       toast.success("Role updated successfully");
     },
     onError: (error) => {

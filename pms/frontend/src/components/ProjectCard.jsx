@@ -52,10 +52,12 @@ export default function ProjectCard({
   }
 
   return (
-    <div
+    <Link
+      to={`/projects/${proj._id}`}
       key={i}
       className="glass-panel"
       style={{
+        textDecoration: "none",
         display: "flex",
         flexDirection: "column",
         border: `1.5px solid ${borderColor}`,
@@ -70,113 +72,152 @@ export default function ProjectCard({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: "1rem",
+          marginBottom: "0.1rem",
           gap: "0.5rem",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flex: 1, minWidth: 0 }}>
-          {selectable && (
-            <input
-              type="checkbox"
-              checked={isSelected}
-              onChange={() => onToggleSelect && onToggleSelect(proj._id)}
-              style={{
-                width: "17px",
-                height: "17px",
-                cursor: "pointer",
-                accentColor: "#4f46e5",
-                flexShrink: 0,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          )}
-          <h3
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.6rem",
+            flex: 1,
+            justifyContent: "space-between",
+            minWidth: 0,
+          }}
+        >
+          <div
             style={{
-              fontSize: "1rem",
-              fontWeight: "700",
-              margin: 0,
-              textTransform: "uppercase",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.6rem",
             }}
           >
-            <Link
-              to={`/projects/${proj._id}`}
-              style={{ color: "inherit", textDecoration: "none" }}
-            >
-              {proj.title.length > 20
-                ? proj.title.slice(0, 20) + "..."
-                : proj.title}
-            </Link>
-          </h3>
-        </div>
-
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          {/* Alarms */}
-          {isOverdue && (
-            <div
-              title="Overdue!"
-              style={{
-                color: "#ef4444",
-                display: "flex",
-                alignItems: "center",
-                gap: "0.25rem",
-                fontSize: "0.7rem",
-
-                fontWeight: "600",
-              }}
-            >
-              <Clock size={14} />
-              <span>{formatDate(proj.endDate)}</span>
-            </div>
-          )}
-          {isApproachingDeadline && !isOverdue && (
-            <div
-              title="Approaching Deadline"
-              style={{
-                color: "#f59e0b",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <Clock size={16} />{" "}
-              <span
+            {selectable && (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => onToggleSelect && onToggleSelect(proj._id)}
                 style={{
+                  width: "17px",
+                  height: "17px",
+                  cursor: "pointer",
+                  accentColor: "#4f46e5",
+                  flexShrink: 0,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            )}
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "700",
+                margin: 0,
+                textTransform: "uppercase",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <p style={{ color: "inherit", textDecoration: "none" }}>
+                {proj.title.length > 20
+                  ? proj.title.slice(0, 20) + "..."
+                  : proj.title}
+              </p>
+            </h3>
+          </div>
+          <div className="">
+            {/* Alarms */}
+            {isOverdue && (
+              <div
+                title="Overdue!"
+                style={{
+                  color: "#ef4444",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.25rem",
                   fontSize: "0.7rem",
-                  margin: "5px",
+
                   fontWeight: "600",
                 }}
               >
-                {formatDate(proj.endDate)}
-              </span>
-            </div>
-          )}
-          {isCriticalPriority && (
-            <div
-              title="High/Critical Priority"
+                <Clock size={14} />
+                <span>{formatDate(proj.endDate)}</span>
+              </div>
+            )}
+            {isApproachingDeadline && !isOverdue && (
+              <div
+                title="Approaching Deadline"
+                style={{
+                  color: "#f59e0b",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <Clock size={16} />{" "}
+                <span
+                  style={{
+                    fontSize: "0.7rem",
+                    margin: "5px",
+                    fontWeight: "600",
+                  }}
+                >
+                  {formatDate(proj.endDate)}
+                </span>
+              </div>
+            )}
+            {isCriticalPriority && (
+              <div
+                title="High/Critical Priority"
+                style={{
+                  color: "#f97316",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <AlertTriangle size={16} />
+              </div>
+            )}
+            {isReadyForReview && (
+              <div
+                title="Ready for Review"
+                style={{
+                  color: "#10b981",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <CheckCircle size={16} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: "15px" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          {proj.program && (
+            <span
               style={{
-                color: "#f97316",
-                display: "flex",
-                alignItems: "center",
+                display: "inline-block",
+                background: "#fef3c7",
+                color: "#92400e",
+                fontSize: "0.72rem",
+                fontWeight: "600",
+                padding: "0.2rem 0.6rem",
+                borderRadius: "9999px",
+                border: "1px solid #fde68a",
               }}
             >
-              <AlertTriangle size={16} />
-            </div>
+              {proj.program}
+            </span>
           )}
-          {isReadyForReview && (
-            <div
-              title="Ready for Review"
-              style={{
-                color: "#10b981",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <CheckCircle size={16} />
-            </div>
-          )}
-
           <span className={`badge ${getCatBadge(proj.category)}`}>
             {proj.category}
           </span>
@@ -198,7 +239,6 @@ export default function ProjectCard({
           )}
         </div>
       </div>
-
       <p
         style={{
           fontSize: "0.8rem",
@@ -209,6 +249,7 @@ export default function ProjectCard({
           WebkitLineClamp: 2,
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
+          marginTop: "15px",
         }}
       >
         {proj.description.slice(0, 100) || "\u00A0"}
@@ -325,6 +366,6 @@ export default function ProjectCard({
           {formatDate(proj.createdAt)}
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

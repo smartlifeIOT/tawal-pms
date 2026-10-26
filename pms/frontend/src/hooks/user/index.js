@@ -21,7 +21,7 @@ export const useUpdateUser = () => {
         .put(`${API_BASE}/users/${id}`, updates)
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["users"]);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       toast.success("User updated successfully");
     },
     onError: (error) => {
@@ -36,7 +36,7 @@ export const useDeleteUser = () => {
     mutationFn: (id) =>
       apiInstance.delete(`${API_BASE}/users/${id}`).then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["users"]);
+      queryClient.invalidateQueries({ queryKey: ["users"] });
       toast.success("User deleted successfully");
     },
     onError: (error) => {

@@ -39,11 +39,12 @@ export const useStats = () => {
 
 // Fetch all projects
 export const useProjectsHook = (filters = {}) => {
-  const { search, category, status, priority, region, city, page, limit } =
+  const { search, category, program, status, priority, region, city, page, limit } =
     filters;
   const queryParams = new URLSearchParams();
   if (search) queryParams.append("search", search);
   if (category) queryParams.append("category", category);
+  if (program) queryParams.append("program", program);
   if (status) queryParams.append("status", status);
   if (priority) queryParams.append("priority", priority);
   if (region) queryParams.append("region", region);
@@ -72,7 +73,7 @@ export const useCreateProject = () => {
         .then((res) => res.data),
     onSuccess: () => {
       // Invalidate projects list so it refetches with the new entry
-      queryClient.invalidateQueries(["projects"]);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Project created successfully");
     },
     onError: (error) => {
@@ -91,9 +92,11 @@ export const useUpdateProject = () => {
         .then((res) => res.data),
 
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries(["projects"]);
-      queryClient.invalidateQueries(["project", variables?.id]);
-      queryClient.invalidateQueries(["stats"]);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project", variables?.id] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
       toast.success("Project updated successfully");
     },
     onError: (error) => {
@@ -109,9 +112,11 @@ export const useDeleteProject = () => {
     mutationFn: (id) =>
       apiInstance.delete(`${API_BASE}/projects/${id}`).then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["projects"]);
-      queryClient.invalidateQueries(["project"]);
-      queryClient.invalidateQueries(["stats"]);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
       toast.success("Project deleted successfully");
     },
     onError: (error) => {
@@ -129,10 +134,12 @@ export const useBulkDeleteProjects = () => {
         .post(`${API_BASE}/projects/bulk-delete`, { ids })
         .then((res) => res.data),
     onSuccess: (data) => {
-      queryClient.invalidateQueries(["projects"]);
-      queryClient.invalidateQueries(["project"]);
-      queryClient.invalidateQueries(["stats"]);
-      queryClient.invalidateQueries(["projectFilters"]);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["projectFilters"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
       toast.success(data?.message || "Projects deleted successfully");
     },
     onError: (error) => {
@@ -140,6 +147,36 @@ export const useBulkDeleteProjects = () => {
     },
   });
 };
+
+// Bulk update projects (program, category, projectScope)
+export const useBulkUpdateProjects = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, program, category, projectScope }) =>
+      apiInstance
+        .post(`${API_BASE}/projects/bulk-update`, {
+          ids,
+          program,
+          category,
+          projectScope,
+        })
+        .then((res) => res.data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["projectFilters"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
+      toast.success(data?.message || "Projects updated successfully");
+    },
+    onError: (error) => {
+      toast.error(
+        error.response?.data?.message || "Failed to bulk update projects",
+      );
+    },
+  });
+};
+
 // Fetch distinct regions & cities for filter dropdowns
 export const useProjectFilters = () => {
   return useQuery({
@@ -159,14 +196,18 @@ export const useProjectById = (id) => {
     enabled: !!id, // Only run the query if id is truthy
   });
 };
-export const useCategories = (searchQuery = "") => {
+export const useCategories = (searchQuery = "", program = "") => {
+  const queryParams = new URLSearchParams();
+  if (searchQuery) queryParams.append("search", searchQuery);
+  if (program && program !== "All Programs")
+    queryParams.append("program", program);
+  const queryString = queryParams.toString();
+
   return useQuery({
-    queryKey: ["categories", searchQuery],
+    queryKey: ["categories", searchQuery, program],
     queryFn: () =>
       apiInstance
-        .get(
-          `${API_BASE}/categories${searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ""}`,
-        )
+        .get(`${API_BASE}/categories${queryString ? `?${queryString}` : ""}`)
         .then((res) => res.data),
     staleTime: 5 * 60 * 1000,
   });
@@ -180,7 +221,9 @@ export const useCreateCategory = () => {
         .post(`${API_BASE}/categories`, newCategory)
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["categories"]);
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Category created successfully");
     },
     onError: (error) => {
@@ -197,7 +240,9 @@ export const useDeleteCategory = () => {
         .delete(`${API_BASE}/categories/${id}`)
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["categories"]);
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
       toast.success("Category deleted successfully");
     },
     onError: (error) => {
@@ -209,13 +254,15 @@ export const useDeleteCategory = () => {
 export const useUpdateCategory = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, name, budget }) =>
+    mutationFn: ({ id, name, budget, program }) =>
       apiInstance
-        .put(`${API_BASE}/categories/${id}`, { name, budget })
+        .put(`${API_BASE}/categories/${id}`, { name, budget, program })
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["categories"]);
-      toast.success("Category budget updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast.success("Category updated successfully");
     },
     onError: (error) => {
       toast.error(error.response?.data?.message || "Failed to update category");
@@ -232,8 +279,10 @@ export const useUploadProjectsBulk = () => {
         .then((res) => res.data),
     onSuccess: () => {
       toast.success("Projects uploaded successfully");
-      queryClient.invalidateQueries(["projects"]);
-      queryClient.invalidateQueries(["stats"]);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
     },
     onError: (error) => {
       console.log(error);
@@ -267,7 +316,7 @@ export const useAddCategoryScope = () => {
         .post(`${API_BASE}/categories/${id}/scopes`, { scope })
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["categories"]);
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
       toast.success("Scope added");
     },
     onError: (error) => {
@@ -287,12 +336,119 @@ export const useDeleteCategoryScope = () => {
         )
         .then((res) => res.data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["categories"]);
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
       toast.success("Scope removed");
     },
     onError: (error) => {
       toast.error(error.response?.data?.message || "Failed to remove scope");
     },
+  });
+};
+
+// Programs hooks
+export const usePrograms = (searchQuery = "") => {
+  return useQuery({
+    queryKey: ["programs", searchQuery],
+    queryFn: () =>
+      apiInstance
+        .get(
+          `${API_BASE}/programs${searchQuery ? `?search=${encodeURIComponent(searchQuery)}` : ""}`,
+        )
+        .then((res) => res.data),
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const useCreateProgram = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (newProgram) =>
+      apiInstance
+        .post(`${API_BASE}/programs`, newProgram)
+        .then((res) => res.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
+      toast.success("Program created successfully");
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || "Failed to create program");
+    },
+  });
+};
+
+export const useUpdateProgram = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name, budget, description }) =>
+      apiInstance
+        .put(`${API_BASE}/programs/${id}`, { name, budget, description })
+        .then((res) => res.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      toast.success("Program updated successfully");
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || "Failed to update program");
+    },
+  });
+};
+
+export const useDeleteProgram = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) =>
+      apiInstance
+        .delete(`${API_BASE}/programs/${id}`)
+        .then((res) => res.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["programs"] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      toast.success("Program deleted successfully");
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || "Failed to delete program");
+    },
+  });
+};
+
+export const useProjectsByProgram = (programName, options = {}) => {
+  const { page, limit, category, status, priority, search } = options;
+  const queryParams = new URLSearchParams();
+  if (page) queryParams.append("page", page);
+  if (limit) queryParams.append("limit", limit);
+  if (category && category !== "All Categories")
+    queryParams.append("category", category);
+  if (status && status !== "All Statuses") queryParams.append("status", status);
+  if (priority && priority !== "All Priorities")
+    queryParams.append("priority", priority);
+  if (search) queryParams.append("search", search);
+  const queryString = queryParams.toString();
+
+  return useQuery({
+    queryKey: [
+      "projects",
+      "program",
+      programName,
+      page,
+      limit,
+      category,
+      status,
+      priority,
+      search,
+    ],
+    queryFn: () =>
+      apiInstance
+        .get(
+          `${API_BASE}/projects/program/${encodeURIComponent(programName)}${queryString ? `?${queryString}` : ""}`,
+        )
+        .then((res) => res.data),
+    enabled: !!programName,
+    staleTime: 5 * 60 * 1000,
+    cacheTime: 30 * 60 * 1000,
+    ...options,
   });
 };
 
@@ -302,6 +458,7 @@ export default {
   useUpdateProject,
   useDeleteProject,
   useBulkDeleteProjects,
+  useBulkUpdateProjects,
   useProjectFilters,
   useCategories,
   useCreateCategory,
@@ -311,4 +468,9 @@ export default {
   useImportIssuedWo,
   useAddCategoryScope,
   useDeleteCategoryScope,
+  usePrograms,
+  useCreateProgram,
+  useUpdateProgram,
+  useDeleteProgram,
+  useProjectsByProgram,
 };

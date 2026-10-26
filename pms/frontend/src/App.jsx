@@ -23,6 +23,8 @@ import Analytics from "./pages/Analytics";
 import Reports from "./pages/Reports";
 import SitePlanner from "./pages/SitePlanner";
 import BoqProcessor from "./pages/BoqProcessor";
+import Programs from "./pages/Programs";
+import ProgramProjects from "./pages/ProgramProjects";
 
 function Header() {
   const location = useLocation();
@@ -31,7 +33,14 @@ function Header() {
   // tool page sets its own.
   let title;
   let subtitle = "";
-  if (path.startsWith("/category/")) {
+  if (path.startsWith("/program/")) {
+    const prog = decodeURIComponent(path.split("/")[2] || "");
+    title = `${prog} Program`;
+    subtitle = `Projects and details for ${prog} program.`;
+  } else if (path === "/programs") {
+    title = "Manage Programs";
+    subtitle = "Configure and manage project programs.";
+  } else if (path.startsWith("/category/")) {
     const cat = path.split("/")[2];
     const formatted = cat.charAt(0).toUpperCase() + cat.slice(1);
     title = `${formatted} Projects`;
@@ -80,6 +89,7 @@ function MainLayout() {
           <Route path="/projects" element={<AllProjects />} />
           <Route path="/projects/:id" element={<ProjectDetails />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/program/:programName" element={<ProgramProjects />} />
           <Route path="/category/:categoryName" element={<ProjectList />} />
           <Route path="/analytics" element={<Analytics />} />
 
@@ -113,6 +123,14 @@ function MainLayout() {
           />
 
           {/* Admin only */}
+          <Route
+            path="/programs"
+            element={
+              <ProtectedRoute allowedRoles={["Admin", "Manager"]}>
+                <Programs />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/categories"
             element={

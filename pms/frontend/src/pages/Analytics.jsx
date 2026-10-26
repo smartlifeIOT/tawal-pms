@@ -1,27 +1,83 @@
 import { useState, useMemo } from "react";
-import { useProjectsHook } from "../hooks/project";
+import { useProjectsHook, useCategories, usePrograms } from "../hooks/project";
 import { NavLink } from "react-router-dom";
+import { RotateCcw } from "lucide-react";
 
 const formatCurrency = (value) => {
   return `﷼ ${Number(value || 0).toLocaleString("en-US")}`;
 };
 
 export default function Analytics() {
-  const { data: projectsData, isLoading } = useProjectsHook();
+  const { data: projectsData, isLoading } = useProjectsHook({ limit: "all" });
   const projects = projectsData?.data || [];
-  const [filter, setFilter] = useState("All"); // All, Active, Completed
+  const { data: programs = [] } = usePrograms();
+  const { data: categories = [] } = useCategories();
 
-  // Filter projects based on toggle
-  const filteredProjects = useMemo(() => {
-    if (filter === "All") return projects;
-    if (filter === "Completed")
-      return projects.filter((p) => p.status === "Completed");
-    if (filter === "Active")
-      return projects.filter(
-        (p) => p.status !== "Completed" && p.status !== "Closeout",
+  const [filter, setFilter] = useState("All"); // All, Active, Completed
+  const [programFilter, setProgramFilter] = useState("All Programs");
+  const [categoryFilter, setCategoryFilter] = useState("All Categories");
+
+  // Filter categories to only those in the selected program
+  const availableCategories = useMemo(() => {
+    if (!programFilter || programFilter === "All Programs") return categories;
+    return categories.filter(
+      (cat) => !cat.program || cat.program === programFilter,
+    );
+  }, [categories, programFilter]);
+
+  const handleProgramFilterChange = (newProg) => {
+    setProgramFilter(newProg);
+    if (newProg !== "All Programs" && categoryFilter !== "All Categories") {
+      const matchingCats = categories.filter(
+        (c) => !c.program || c.program === newProg,
       );
-    return projects;
-  }, [projects, filter]);
+      if (!matchingCats.some((c) => c.name === categoryFilter)) {
+        setCategoryFilter("All Categories");
+      }
+    }
+  };
+
+  const handleResetFilters = () => {
+    setFilter("All");
+    setProgramFilter("All Programs");
+    setCategoryFilter("All Categories");
+  };
+
+  const hasActiveFilters =
+    filter !== "All" ||
+    programFilter !== "All Programs" ||
+    categoryFilter !== "All Categories";
+
+  // Filter projects based on status, program, and category
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      // Status filter
+      if (filter === "Completed" && p.status !== "Completed") return false;
+      if (
+        filter === "Active" &&
+        (p.status === "Completed" || p.status === "Closeout")
+      )
+        return false;
+
+      // Program filter
+      if (
+        programFilter &&
+        programFilter !== "All Programs" &&
+        p.program !== programFilter
+      )
+        return false;
+
+      // Category filter
+      if (
+        categoryFilter &&
+        categoryFilter !== "All Categories" &&
+        p.category !== categoryFilter
+      )
+        return false;
+
+      return true;
+    });
+  }, [projects, filter, programFilter, categoryFilter]);
 
   // KPIs
   const totalProjects = filteredProjects.length;
@@ -125,13 +181,15 @@ export default function Analytics() {
         color: "#1e293b",
       }}
     >
-      {/* HEADER & TOGGLES */}
+      {/* HEADER & FILTERS */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "flex-end",
-          marginBottom: "1rem",
+          alignItems: "flex-start",
+          marginBottom: "1.25rem",
+          flexWrap: "wrap",
+          gap: "1rem",
         }}
       >
         <div>
@@ -141,45 +199,224 @@ export default function Analytics() {
           <p
             style={{
               color: "#64748b",
-              marginTop: "0.5rem",
+              marginTop: "0.35rem",
               fontSize: "0.9rem",
             }}
           >
-            Track spend against allocated budgets across every project and
-            category.
+            Track spend against allocated budgets across programs, categories,
+            and projects.
           </p>
         </div>
 
+        {/* FILTERS TOOLBAR */}
         <div
           style={{
             display: "flex",
-            backgroundColor: "#fff",
-            borderRadius: "2rem",
-            padding: "0.25rem",
-            border: "1px solid #e2e8f0",
+            alignItems: "center",
+            gap: "0.75rem",
+            flexWrap: "wrap",
           }}
         >
-          {["All", "Active", "Completed"].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
+          {/* Program Filter */}
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}
+          >
+            <span
               style={{
-                background: filter === f ? "#4f46e5" : "transparent",
-                color: filter === f ? "#fff" : "#64748b",
-                border: "none",
-                borderRadius: "1.5rem",
-                padding: "0.5rem 1.25rem",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                transition: "all 0.2s",
+                fontSize: "0.8rem",
+                fontWeight: "600",
+                color: "#475569",
               }}
             >
-              {f}
+              Program:
+            </span>
+            <select
+              value={programFilter}
+              onChange={(e) => handleProgramFilterChange(e.target.value)}
+              style={{
+                padding: "0.45rem 0.75rem",
+                borderRadius: "0.45rem",
+                border: "1px solid #cbd5e1",
+                background: "#ffffff",
+                fontSize: "0.85rem",
+                fontWeight: "500",
+                color: "#1e293b",
+                outline: "none",
+                cursor: "pointer",
+              }}
+            >
+              <option value="All Programs">All Programs</option>
+              {programs.map((prog) => (
+                <option key={prog._id} value={prog.name}>
+                  {prog.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Category Filter */}
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}
+          >
+            <span
+              style={{
+                fontSize: "0.8rem",
+                fontWeight: "600",
+                color: "#475569",
+              }}
+            >
+              Category:
+            </span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              style={{
+                padding: "0.45rem 0.75rem",
+                borderRadius: "0.45rem",
+                border: "1px solid #cbd5e1",
+                background: "#ffffff",
+                fontSize: "0.85rem",
+                fontWeight: "500",
+                color: "#1e293b",
+                outline: "none",
+                cursor: "pointer",
+              }}
+            >
+              <option value="All Categories">All Categories</option>
+              {availableCategories.map((cat) => (
+                <option key={cat._id} value={cat.name}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status Toggle */}
+          <div
+            style={{
+              display: "flex",
+              backgroundColor: "#fff",
+              borderRadius: "2rem",
+              padding: "0.2rem",
+              border: "1px solid #cbd5e1",
+            }}
+          >
+            {["All", "Active", "Completed"].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                style={{
+                  background: filter === f ? "#4f46e5" : "transparent",
+                  color: filter === f ? "#fff" : "#64748b",
+                  border: "none",
+                  borderRadius: "1.5rem",
+                  padding: "0.35rem 0.9rem",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          {/* Reset Filters button */}
+          {hasActiveFilters && (
+            <button
+              onClick={handleResetFilters}
+              title="Reset all filters"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.3rem",
+                padding: "0.45rem 0.75rem",
+                borderRadius: "0.45rem",
+                border: "1px solid #cbd5e1",
+                background: "#f8fafc",
+                color: "#64748b",
+                fontSize: "0.8rem",
+                fontWeight: "600",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <RotateCcw size={13} />
+              Reset
             </button>
-          ))}
+          )}
         </div>
       </div>
+
+      {/* Active Filter Indicators */}
+      {hasActiveFilters && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            marginBottom: "1.25rem",
+            flexWrap: "wrap",
+            fontSize: "0.8rem",
+          }}
+        >
+          <span style={{ color: "#64748b", fontWeight: "500" }}>
+            Active Filters:
+          </span>
+          {programFilter !== "All Programs" && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "0.2rem 0.6rem",
+                borderRadius: "9999px",
+                background: "#ecfdf5",
+                color: "#065f46",
+                fontWeight: "600",
+                border: "1px solid #a7f3d0",
+              }}
+            >
+              Program: {programFilter}
+            </span>
+          )}
+          {categoryFilter !== "All Categories" && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "0.2rem 0.6rem",
+                borderRadius: "9999px",
+                background: "#e0e7ff",
+                color: "#3730a3",
+                fontWeight: "600",
+                border: "1px solid #c7d2fe",
+              }}
+            >
+              Category: {categoryFilter}
+            </span>
+          )}
+          {filter !== "All" && (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "0.2rem 0.6rem",
+                borderRadius: "9999px",
+                background: "#fef3c7",
+                color: "#92400e",
+                fontWeight: "600",
+                border: "1px solid #fde68a",
+              }}
+            >
+              Status: {filter}
+            </span>
+          )}
+          <span style={{ color: "#94a3b8" }}>
+            ({totalProjects} project{totalProjects !== 1 ? "s" : ""} match)
+          </span>
+        </div>
+      )}
 
       {/* KPI CARDS */}
       <div
@@ -557,7 +794,7 @@ export default function Analytics() {
             Project Breakdown
           </h3>
           <div style={{ fontSize: "0.8rem", color: "#64748b" }}>
-            ( All {projects.length} projects )
+            ( {filteredProjects.length} of {projects.length} projects )
           </div>
         </div>
 
@@ -580,6 +817,18 @@ export default function Analytics() {
                 }}
               >
                 Project
+              </th>
+              <th
+                style={{
+                  padding: "0.75rem 1.5rem",
+                  textAlign: "left",
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  color: "#64748b",
+                  textTransform: "uppercase",
+                }}
+              >
+                Program
               </th>
               <th
                 style={{
@@ -716,6 +965,27 @@ export default function Analytics() {
                     style={{
                       padding: "1rem 1.5rem",
                       fontSize: "0.85rem",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "0.2rem 0.55rem",
+                        borderRadius: "9999px",
+                        fontSize: "0.75rem",
+                        fontWeight: "600",
+                        background: "#e0e7ff",
+                        color: "#4338ca",
+                        border: "1px solid #c7d2fe",
+                      }}
+                    >
+                      {p.program || "—"}
+                    </span>
+                  </td>
+                  <td
+                    style={{
+                      padding: "1rem 1.5rem",
+                      fontSize: "0.85rem",
                       color: "#475569",
                     }}
                   >
@@ -808,7 +1078,7 @@ export default function Analytics() {
             {filteredProjects.length === 0 && (
               <tr>
                 <td
-                  colSpan="8"
+                  colSpan="9"
                   style={{
                     padding: "2rem",
                     textAlign: "center",
