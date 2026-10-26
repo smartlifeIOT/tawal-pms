@@ -59,21 +59,22 @@ const Dashboard = () => {
   const totalBudget = stats?.totalBudget || 0;
 
   // Use stats arrays for charts
-  const CATEGORY_COLORS = [
-    "#f59e0b",
+  const PROGRAM_COLORS = [
+    "#4f46e5",
+    "#0ea5e9",
     "#10b981",
+    "#f59e0b",
     "#8b5cf6",
     "#e11d48",
-    "#0ea5e9",
     "#f97316",
+    "#14b8a6",
   ];
-  const categoryData = (stats?.categoryData || []).map((c, idx) => ({
-    ...c,
-    color: CATEGORY_COLORS[idx % CATEGORY_COLORS.length],
+  const programData = (stats?.programData || []).map((p, idx) => ({
+    ...p,
+    color: PROGRAM_COLORS[idx % PROGRAM_COLORS.length],
     // Recharts Legend reads `fill` (not `color`) for icon colors
-    fill: CATEGORY_COLORS[idx % CATEGORY_COLORS.length],
+    fill: PROGRAM_COLORS[idx % PROGRAM_COLORS.length],
   }));
-  console.log(categoryData);
   const statusColorMap = {
     Initiation: "#94a3b8",
     Mapping: "#4f46e5",
@@ -200,19 +201,19 @@ const Dashboard = () => {
           marginBottom: "2rem",
         }}
       >
-        {/* Category Chart */}
+        {/* Program Chart */}
         <div
           className="glass-panel"
           style={{ display: "flex", flexDirection: "column" }}
         >
           <h3 style={{ fontSize: "0.875rem", marginBottom: "1rem" }}>
-            Projects by Category
+            Projects by Program
           </h3>
           <div style={{ flex: 1, position: "relative" }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={categoryData}
+                  data={programData}
                   cx="50%"
                   cy="40%"
                   innerRadius={50}
@@ -220,7 +221,7 @@ const Dashboard = () => {
                   paddingAngle={2}
                   dataKey="value"
                 >
-                  {categoryData.map((entry, index) => (
+                  {programData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>

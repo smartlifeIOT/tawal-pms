@@ -48,7 +48,8 @@ function normalizeProjectRow(rawRow) {
     "project scope",
     "scope",
   );
-  if (projectScope !== undefined) obj.projectScope = String(projectScope).trim();
+  if (projectScope !== undefined)
+    obj.projectScope = String(projectScope).trim();
 
   const status = getVal("status");
   if (status !== undefined && String(status).trim() !== "") {
