@@ -1,8 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiInstance } from "../service/index";
 import { useAuthStore } from "../store/authStore";
-import { useCategories } from "../hooks/project";
+import { useCategories, usePrograms } from "../hooks/project";
+import * as XLSX from "xlsx";
 import {
   BarChart,
   Bar,
@@ -18,6 +19,7 @@ import {
   AreaChart,
   Area,
 } from "recharts";
+
 import {
   FileBarChart2,
   TrendingUp,
@@ -30,6 +32,7 @@ import {
   BarChart2,
   Layers,
   Globe,
+  FileSpreadsheet,
 } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
@@ -250,7 +253,7 @@ function PipelineBar({ data, total }) {
 }
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
-function FilterBar({ filters, setFilters, categories }) {
+function FilterBar({ filters, setFilters, programs, categories }) {
   const inputStyle = {
     padding: "0.4rem 0.75rem",
     border: "1px solid #e2e8f0",
@@ -261,6 +264,36 @@ function FilterBar({ filters, setFilters, categories }) {
     outline: "none",
     cursor: "pointer",
   };
+
+  const availableCategories = useMemo(() => {
+    if (!filters.program || filters.program === "all") return categories;
+    return categories.filter(
+      (c) => !c.program || c.program === filters.program,
+    );
+  }, [categories, filters.program]);
+
+  const handleProgramChange = (prog) => {
+    setFilters((f) => {
+      const next = { ...f, program: prog };
+      if (prog !== "all" && f.category !== "all") {
+        const matching = categories.filter(
+          (c) => !c.program || c.program === prog,
+        );
+        if (!matching.some((c) => c.name === f.category)) {
+          next.category = "all";
+        }
+      }
+      return next;
+    });
+  };
+
+  const hasActiveFilters =
+    filters.program !== "all" ||
+    filters.category !== "all" ||
+    filters.status !== "all" ||
+    filters.from ||
+    filters.to;
+
   return (
     <div
       style={{
@@ -275,6 +308,21 @@ function FilterBar({ filters, setFilters, categories }) {
         boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}
     >
+      {/* Program filter */}
+      <select
+        style={inputStyle}
+        value={filters.program}
+        onChange={(e) => handleProgramChange(e.target.value)}
+      >
+        <option value="all">All Programs</option>
+        {programs.map((p) => (
+          <option key={p._id || p.name} value={p.name}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+
+      {/* Category filter */}
       <select
         style={inputStyle}
         value={filters.category}
@@ -283,12 +331,14 @@ function FilterBar({ filters, setFilters, categories }) {
         }
       >
         <option value="all">All Categories</option>
-        {categories.map((c) => (
-          <option key={c._id} value={c.name}>
+        {availableCategories.map((c) => (
+          <option key={c._id || c.name} value={c.name}>
             {c.name}
           </option>
         ))}
       </select>
+
+      {/* Status filter */}
       <select
         style={inputStyle}
         value={filters.status}
@@ -308,6 +358,8 @@ function FilterBar({ filters, setFilters, categories }) {
           </option>
         ))}
       </select>
+
+      {/* From date */}
       <input
         type="date"
         style={inputStyle}
@@ -315,6 +367,8 @@ function FilterBar({ filters, setFilters, categories }) {
         onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
         title="From date"
       />
+
+      {/* To date */}
       <input
         type="date"
         style={inputStyle}
@@ -322,10 +376,8 @@ function FilterBar({ filters, setFilters, categories }) {
         onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
         title="To date"
       />
-      {(filters.category !== "all" ||
-        filters.status !== "all" ||
-        filters.from ||
-        filters.to) && (
+
+      {hasActiveFilters && (
         <button
           style={{
             ...inputStyle,
@@ -334,7 +386,13 @@ function FilterBar({ filters, setFilters, categories }) {
             cursor: "pointer",
           }}
           onClick={() =>
-            setFilters({ category: "all", status: "all", from: "", to: "" })
+            setFilters({
+              program: "all",
+              category: "all",
+              status: "all",
+              from: "",
+              to: "",
+            })
           }
         >
           ✕ Clear
@@ -439,6 +497,26 @@ function SectionHeading({ children }) {
   );
 }
 
+// ─── Excel export helper ──────────────────────────────────────────────────────
+function downloadExcel(data, filename) {
+  if (!data?.length) return;
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const colWidths = Object.keys(data[0]).map((key) => {
+    const maxLen = Math.max(
+      key.length,
+      ...data.map((row) => (row[key] != null ? String(row[key]).length : 0)),
+    );
+    return { wch: Math.min(Math.max(maxLen + 3, 12), 40) };
+  });
+  worksheet["!cols"] = colWidths;
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Projects Report");
+  XLSX.writeFile(
+    workbook,
+    filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`,
+  );
+}
+
 // ─── CSV export helper ────────────────────────────────────────────────────────
 function downloadCSV(data, filename) {
   if (!data?.length) return;
@@ -466,9 +544,11 @@ function downloadCSV(data, filename) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function Reports() {
   const { user } = useAuthStore();
+  const { data: programs = [] } = usePrograms();
   const { data: categories = [] } = useCategories();
   const [activeTab, setActiveTab] = useState("summary");
   const [filters, setFilters] = useState({
+    program: "all",
     category: "all",
     status: "all",
     from: "",
@@ -478,6 +558,8 @@ export default function Reports() {
 
   // Build query string from filters
   const qs = new URLSearchParams();
+  if (filters.program && filters.program !== "all")
+    qs.set("program", filters.program);
   if (filters.category !== "all") qs.set("category", filters.category);
   if (filters.status !== "all") qs.set("status", filters.status);
   if (filters.from) qs.set("from", filters.from);
@@ -533,6 +615,53 @@ export default function Reports() {
     boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
   };
 
+  // Selected Program and Category objects
+  const selectedProgramObj = useMemo(() => {
+    if (!filters.program || filters.program === "all") return null;
+    return programs.find((p) => p.name === filters.program) || null;
+  }, [programs, filters.program]);
+
+  const selectedCategoryObj = useMemo(() => {
+    if (!filters.category || filters.category === "all") return null;
+    return categories.find((c) => c.name === filters.category) || null;
+  }, [categories, filters.category]);
+
+  // Total budget & subtitle logic based on active filters (Program-centric)
+  const { totalBudget, budgetSubtitle } = useMemo(() => {
+    const backendTotal = summary?.totalBudget ?? 0;
+
+    if (selectedCategoryObj) {
+      const catBudget = selectedCategoryObj.budget || 0;
+      return {
+        totalBudget: catBudget > 0 ? catBudget : backendTotal,
+        budgetSubtitle: `Category budget: ${selectedCategoryObj.name}`,
+      };
+    }
+
+    if (selectedProgramObj) {
+      const progBudget = selectedProgramObj.budget || 0;
+      return {
+        totalBudget: progBudget > 0 ? progBudget : backendTotal,
+        budgetSubtitle: `Program budget: ${selectedProgramObj.name}`,
+      };
+    }
+
+    const allProgramsBudget = programs.reduce(
+      (sum, p) => sum + (p.budget || 0),
+      0,
+    );
+    return {
+      totalBudget:
+        allProgramsBudget > 0 ? allProgramsBudget : backendTotal,
+      budgetSubtitle: "Sum of all program budgets",
+    };
+  }, [selectedCategoryObj, selectedProgramObj, programs, summary?.totalBudget]);
+
+  const totalSpent = summary?.totalSpent ?? 0;
+  const remainingBudget = Math.max(0, totalBudget - totalSpent);
+  const budgetUtilization =
+    totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+
   // ─── SUMMARY TAB ─────────────────────────────────────────────────────────────
   const SummaryTab = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -583,20 +712,21 @@ export default function Reports() {
           icon={SaudiRiyal}
           label="Total Budget"
           color="#f59e0b"
-          value={`⃁ ${(summary?.totalBudget ?? 0).toLocaleString()}`}
+          value={`⃁ ${totalBudget.toLocaleString()}`}
+          sub={budgetSubtitle}
         />
         <StatCard
           icon={TrendingUp}
           label="Total Spent"
           color="#8b5cf6"
-          value={`⃁ ${(summary?.totalSpent ?? 0).toLocaleString()}`}
+          value={`⃁ ${totalSpent.toLocaleString()}`}
         />
         <StatCard
           icon={FileBarChart2}
           label="Budget Utilization"
           color="#06b6d4"
-          value={`${summary?.budgetUtilization ?? 0}%`}
-          sub={`⃁ ${((summary?.totalBudget || 0) - (summary?.totalSpent || 0)).toLocaleString()} remaining`}
+          value={`${budgetUtilization}%`}
+          sub={`⃁ ${remainingBudget.toLocaleString()} remaining`}
         />
       </div>
 
@@ -604,7 +734,7 @@ export default function Reports() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
           gap: "0.75rem",
         }}
       >
@@ -681,6 +811,39 @@ export default function Reports() {
           )}
         </div>
 
+        {/* Program bar */}
+        <div style={panel}>
+          <SectionHeading>By Program</SectionHeading>
+          {!summary?.programData?.length ? (
+            <EmptyChart />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart
+                data={summary.programData}
+                margin={{ top: 4, right: 4, bottom: 40, left: 0 }}
+              >
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 10 }}
+                  angle={-30}
+                  textAnchor="end"
+                  interval={0}
+                />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                  {summary.programData.map((_, i) => (
+                    <Cell
+                      key={i}
+                      fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
         {/* Category bar */}
         <div style={panel}>
           <SectionHeading>By Category</SectionHeading>
@@ -705,7 +868,7 @@ export default function Reports() {
                   {summary.categoryData.map((_, i) => (
                     <Cell
                       key={i}
-                      fill={CHART_PALETTE[i % CHART_PALETTE.length]}
+                      fill={CHART_PALETTE[(i + 3) % CHART_PALETTE.length]}
                     />
                   ))}
                 </Bar>
@@ -841,13 +1004,14 @@ export default function Reports() {
           icon={SaudiRiyal}
           label="Total Budget Allocated"
           color="#3b82f6"
-          value={`⃁ ${(summary?.totalBudget ?? 0).toLocaleString()}`}
+          value={`⃁ ${totalBudget.toLocaleString()}`}
+          sub={budgetSubtitle}
         />
         <StatCard
           icon={TrendingUp}
           label="Total Spent"
           color="#10b981"
-          value={`⃁ ${(summary?.totalSpent ?? 0).toLocaleString()}`}
+          value={`⃁ ${totalSpent.toLocaleString()}`}
         />
         <div
           style={{
@@ -882,11 +1046,11 @@ export default function Reports() {
                   height: "100%",
                   borderRadius: 999,
                   transition: "width 0.6s",
-                  width: `${Math.min(summary?.budgetUtilization ?? 0, 100)}%`,
+                  width: `${Math.min(budgetUtilization, 100)}%`,
                   background:
-                    (summary?.budgetUtilization ?? 0) > 100
+                    budgetUtilization > 100
                       ? "#ef4444"
-                      : (summary?.budgetUtilization ?? 0) > 80
+                      : budgetUtilization > 80
                         ? "#f59e0b"
                         : "#10b981",
                 }}
@@ -900,10 +1064,13 @@ export default function Reports() {
                 whiteSpace: "nowrap",
               }}
             >
-              {summary?.budgetUtilization ?? 0}%
+              {budgetUtilization}%
             </span>
           </div>
           <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 11 }}>
+            <span style={{ color: "#64748b" }}>
+              Remaining: ⃁ {remainingBudget.toLocaleString()}
+            </span>
             <span style={{ color: "#10b981" }}>
               ✓ On Budget: {budget?.underBudgetCount ?? "—"}
             </span>
@@ -912,6 +1079,48 @@ export default function Reports() {
             </span>
           </div>
         </div>
+      </div>
+
+      {/* Budget vs Spent by Program */}
+      <div style={panel}>
+        <SectionHeading>Budget vs. Spent by Program</SectionHeading>
+        {!budget?.programBudget?.length ? (
+          <EmptyChart />
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart
+              data={budget.programBudget}
+              margin={{ top: 4, right: 16, bottom: 40, left: 20 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis
+                dataKey="program"
+                tick={{ fontSize: 11 }}
+                angle={-25}
+                textAnchor="end"
+                interval={0}
+              />
+              <YAxis
+                tick={{ fontSize: 11 }}
+                tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
+              />
+              <Tooltip content={<CustomTooltip isCurrency />} />
+              <Legend iconType="square" wrapperStyle={{ fontSize: 12 }} />
+              <Bar
+                dataKey="budget"
+                name="Budget"
+                fill="#4f46e5"
+                radius={[4, 4, 0, 0]}
+              />
+              <Bar
+                dataKey="spent"
+                name="Spent"
+                fill="#10b981"
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Budget vs Spent by Category */}
@@ -974,6 +1183,7 @@ export default function Reports() {
                 <tr style={{ borderBottom: "2px solid #e2e8f0" }}>
                   {[
                     "Project",
+                    "Program",
                     "Category",
                     "Status",
                     "Budget (⃁)",
@@ -1024,6 +1234,21 @@ export default function Reports() {
                       }}
                     >
                       {p.title}
+                    </td>
+                    <td style={{ padding: "10px 12px", color: "#475569" }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 7px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          background: "#e0e7ff",
+                          color: "#4338ca",
+                        }}
+                      >
+                        {p.program || "—"}
+                      </span>
                     </td>
                     <td style={{ padding: "10px 12px", color: "#475569" }}>
                       {p.category || "—"}
@@ -1323,35 +1548,69 @@ export default function Reports() {
           </p>
         </div>
         {isFullEditor && (
-          <button
-            onClick={async () => {
-              const { data } = await fetchExport();
-              if (data?.length) {
-                downloadCSV(
-                  data,
-                  `pms-export-${new Date().toISOString().slice(0, 10)}.csv`,
-                );
-              }
-            }}
-            disabled={exportLoading}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.4rem",
-              padding: "0.5rem 1.1rem",
-              background: exportLoading ? "#e2e8f0" : "#4f46e5",
-              color: exportLoading ? "#94a3b8" : "#fff",
-              border: "none",
-              borderRadius: 8,
-              cursor: exportLoading ? "not-allowed" : "pointer",
-              fontSize: "0.82rem",
-              fontWeight: 600,
-              transition: "background 0.2s",
-            }}
-          >
-            <Download size={15} />
-            {exportLoading ? "Exporting…" : "Export CSV"}
-          </button>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              onClick={async () => {
+                const { data } = await fetchExport();
+                if (data?.length) {
+                  downloadExcel(
+                    data,
+                    `pms-report-${new Date().toISOString().slice(0, 10)}.xlsx`,
+                  );
+                }
+              }}
+              disabled={exportLoading}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                padding: "0.5rem 1.1rem",
+                background: exportLoading ? "#e2e8f0" : "#10b981",
+                color: exportLoading ? "#94a3b8" : "#fff",
+                border: "none",
+                borderRadius: 8,
+                cursor: exportLoading ? "not-allowed" : "pointer",
+                fontSize: "0.82rem",
+                fontWeight: 600,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                transition: "background 0.2s",
+              }}
+            >
+              <FileSpreadsheet size={15} />
+              {exportLoading ? "Exporting…" : "Export Excel"}
+            </button>
+
+            <button
+              onClick={async () => {
+                const { data } = await fetchExport();
+                if (data?.length) {
+                  downloadCSV(
+                    data,
+                    `pms-report-${new Date().toISOString().slice(0, 10)}.csv`,
+                  );
+                }
+              }}
+              disabled={exportLoading}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                padding: "0.5rem 1.1rem",
+                background: exportLoading ? "#e2e8f0" : "#4f46e5",
+                color: exportLoading ? "#94a3b8" : "#fff",
+                border: "none",
+                borderRadius: 8,
+                cursor: exportLoading ? "not-allowed" : "pointer",
+                fontSize: "0.82rem",
+                fontWeight: 600,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                transition: "background 0.2s",
+              }}
+            >
+              <Download size={15} />
+              {exportLoading ? "Exporting…" : "Export CSV"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -1359,6 +1618,7 @@ export default function Reports() {
       <FilterBar
         filters={filters}
         setFilters={setFilters}
+        programs={programs}
         categories={categories}
       />
 

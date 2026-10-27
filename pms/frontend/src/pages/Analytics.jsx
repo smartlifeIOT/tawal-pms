@@ -25,8 +25,11 @@ export default function Analytics() {
     );
   }, [categories, programFilter]);
 
+  const [breakdownView, setBreakdownView] = useState("auto"); // "auto" | "program" | "category"
+
   const handleProgramFilterChange = (newProg) => {
     setProgramFilter(newProg);
+    setBreakdownView("auto");
     if (newProg !== "All Programs" && categoryFilter !== "All Categories") {
       const matchingCats = categories.filter(
         (c) => !c.program || c.program === newProg,
@@ -41,6 +44,7 @@ export default function Analytics() {
     setFilter("All");
     setProgramFilter("All Programs");
     setCategoryFilter("All Categories");
+    setBreakdownView("auto");
   };
 
   const hasActiveFilters =
@@ -79,19 +83,72 @@ export default function Analytics() {
     });
   }, [projects, filter, programFilter, categoryFilter]);
 
+  // Selected Program and Category objects
+  const selectedProgramObj = useMemo(() => {
+    if (!programFilter || programFilter === "All Programs") return null;
+    return programs.find((p) => p.name === programFilter) || null;
+  }, [programs, programFilter]);
+
+  const selectedCategoryObj = useMemo(() => {
+    if (!categoryFilter || categoryFilter === "All Categories") return null;
+    return categories.find((c) => c.name === categoryFilter) || null;
+  }, [categories, categoryFilter]);
+
+  // Projects budget sum in current filtered view as fallback
+  const projectsBudgetSum = useMemo(() => {
+    return filteredProjects.reduce((sum, p) => sum + (p.budget || 0), 0);
+  }, [filteredProjects]);
+
+  // Total budget & subtitle logic based on active filters:
+  // - If specific category selected: show selected category's budget
+  // - If specific program selected: show selected program's budget
+  // - By default (All Programs): show sum of all programs' budgets
+  const { totalBudget, budgetSubtitle } = useMemo(() => {
+    if (selectedCategoryObj) {
+      const catBudget = selectedCategoryObj.budget || 0;
+      return {
+        totalBudget: catBudget > 0 ? catBudget : projectsBudgetSum,
+        budgetSubtitle: `Category budget: ${selectedCategoryObj.name}`,
+      };
+    }
+
+    if (selectedProgramObj) {
+      const progBudget = selectedProgramObj.budget || 0;
+      return {
+        totalBudget: progBudget > 0 ? progBudget : projectsBudgetSum,
+        budgetSubtitle: `Program budget: ${selectedProgramObj.name}`,
+      };
+    }
+
+    // Default: sum of all program budgets
+    const allProgramsBudget = programs.reduce(
+      (sum, p) => sum + (p.budget || 0),
+      0,
+    );
+    return {
+      totalBudget:
+        allProgramsBudget > 0 ? allProgramsBudget : projectsBudgetSum,
+      budgetSubtitle: "Sum of all program budgets",
+    };
+  }, [selectedCategoryObj, selectedProgramObj, programs, projectsBudgetSum]);
+
   // KPIs
   const totalProjects = filteredProjects.length;
-  const totalBudget = filteredProjects.reduce(
-    (sum, p) => sum + (p.budget || 0),
-    0,
-  );
-  const totalSpent = filteredProjects.reduce(
-    (sum, p) => sum + (p.spent || 0),
-    0,
-  );
+  const totalSpent = useMemo(() => {
+    return filteredProjects.reduce((sum, p) => sum + (p.spent || 0), 0);
+  }, [filteredProjects]);
   const remaining = totalBudget - totalSpent;
   const totalUtilizedPercent =
     totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0;
+
+  // Active breakdown: "program" by default, or "category" if a program filter is active
+  const activeBreakdown = useMemo(() => {
+    if (breakdownView !== "auto") return breakdownView;
+    return programFilter === "All Programs" &&
+      categoryFilter === "All Categories"
+      ? "program"
+      : "category";
+  }, [breakdownView, programFilter, categoryFilter]);
 
   // Status Distribution
   const statusCounts = {
@@ -110,30 +167,114 @@ export default function Analytics() {
   });
   const maxStatusCount = Math.max(...Object.values(statusCounts), 1);
 
-  // Category Breakdown
-  const categoryMap = {};
-  filteredProjects.forEach((p) => {
-    if (!categoryMap[p.category]) {
-      categoryMap[p.category] = { count: 0, budget: 0, spent: 0 };
+  // Program Breakdown Data (for "By Program" view)
+  const programsData = useMemo(() => {
+    const map = {};
+    programs.forEach((prog) => {
+      map[prog.name] = {
+        name: prog.name,
+        budget: prog.budget || 0,
+        spent: 0,
+        count: 0,
+        projectBudgetSum: 0,
+      };
+    });
+
+    filteredProjects.forEach((p) => {
+      const progName = p.program || "Unassigned";
+      if (!map[progName]) {
+        map[progName] = {
+          name: progName,
+          budget: 0,
+          spent: 0,
+          count: 0,
+          projectBudgetSum: 0,
+        };
+      }
+      map[progName].count++;
+      map[progName].spent += p.spent || 0;
+      map[progName].projectBudgetSum += p.budget || 0;
+    });
+
+    return Object.values(map)
+      .map((item) => {
+        const effectiveBudget =
+          item.budget > 0 ? item.budget : item.projectBudgetSum;
+        return {
+          ...item,
+          budget: effectiveBudget,
+          percentUsed:
+            effectiveBudget > 0
+              ? Math.round((item.spent / effectiveBudget) * 100)
+              : 0,
+        };
+      })
+      .filter((item) => item.count > 0 || item.budget > 0)
+      .sort((a, b) => b.budget - a.budget);
+  }, [programs, filteredProjects]);
+
+  // Category Breakdown Data (for "By Category" view)
+  const categoriesData = useMemo(() => {
+    const map = {};
+
+    availableCategories.forEach((cat) => {
+      map[cat.name] = {
+        name: cat.name,
+        program: cat.program,
+        budget: cat.budget || 0,
+        spent: 0,
+        count: 0,
+        projectBudgetSum: 0,
+      };
+    });
+
+    filteredProjects.forEach((p) => {
+      const catName = p.category || "Unassigned";
+      if (!map[catName]) {
+        map[catName] = {
+          name: catName,
+          program: p.program,
+          budget: 0,
+          spent: 0,
+          count: 0,
+          projectBudgetSum: 0,
+        };
+      }
+      map[catName].count++;
+      map[catName].spent += p.spent || 0;
+      map[catName].projectBudgetSum += p.budget || 0;
+    });
+
+    let list = Object.values(map);
+
+    if (categoryFilter && categoryFilter !== "All Categories") {
+      list = list.filter((c) => c.name === categoryFilter);
     }
-    categoryMap[p.category].count++;
-    categoryMap[p.category].budget += p.budget || 0;
-    categoryMap[p.category].spent += p.spent || 0;
-  });
 
-  const categoriesData = Object.keys(categoryMap)
-    .map((key) => ({
-      name: key,
-      ...categoryMap[key],
-      percentUsed:
-        categoryMap[key].budget > 0
-          ? Math.round((categoryMap[key].spent / categoryMap[key].budget) * 100)
-          : 0,
-    }))
-    .sort((a, b) => b.budget - a.budget);
-  // changes
+    return list
+      .map((item) => {
+        const effectiveBudget =
+          item.budget > 0 ? item.budget : item.projectBudgetSum;
+        return {
+          ...item,
+          budget: effectiveBudget,
+          percentUsed:
+            effectiveBudget > 0
+              ? Math.round((item.spent / effectiveBudget) * 100)
+              : 0,
+        };
+      })
+      .filter((item) => item.count > 0 || item.budget > 0)
+      .sort((a, b) => b.budget - a.budget);
+  }, [availableCategories, filteredProjects, categoryFilter]);
 
-  const maxCategoryBudget = Math.max(...categoriesData.map((c) => c.budget), 1);
+  const currentBreakdownData =
+    activeBreakdown === "program" ? programsData : categoriesData;
+
+  const maxBreakdownBudget = Math.max(
+    ...currentBreakdownData.map((d) => Math.max(d.budget, d.spent)),
+    1,
+  );
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -207,148 +348,143 @@ export default function Analytics() {
             and projects.
           </p>
         </div>
+      </div>
+      {/* FILTERS TOOLBAR */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
+          flexWrap: "wrap",
+          margin: "12px 0px",
+        }}
+      >
+        {/* Program Filter */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+          <span
+            style={{
+              fontSize: "0.8rem",
+              fontWeight: "600",
+              color: "#475569",
+            }}
+          >
+            Program:
+          </span>
+          <select
+            value={programFilter}
+            onChange={(e) => handleProgramFilterChange(e.target.value)}
+            style={{
+              padding: "0.45rem 0.75rem",
+              borderRadius: "0.45rem",
+              border: "1px solid #cbd5e1",
+              background: "#ffffff",
+              fontSize: "0.85rem",
+              fontWeight: "500",
+              color: "#1e293b",
+              outline: "none",
+              cursor: "pointer",
+            }}
+          >
+            <option value="All Programs">All Programs</option>
+            {programs.map((prog) => (
+              <option key={prog._id} value={prog.name}>
+                {prog.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        {/* FILTERS TOOLBAR */}
+        {/* Category Filter */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+          <span
+            style={{
+              fontSize: "0.8rem",
+              fontWeight: "600",
+              color: "#475569",
+            }}
+          >
+            Category:
+          </span>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            style={{
+              padding: "0.45rem 0.75rem",
+              borderRadius: "0.45rem",
+              border: "1px solid #cbd5e1",
+              background: "#ffffff",
+              fontSize: "0.85rem",
+              fontWeight: "500",
+              color: "#1e293b",
+              outline: "none",
+              cursor: "pointer",
+            }}
+          >
+            <option value="All Categories">All Categories</option>
+            {availableCategories.map((cat) => (
+              <option key={cat._id} value={cat.name}>
+                {cat.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Status Toggle */}
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-            flexWrap: "wrap",
+            backgroundColor: "#fff",
+            borderRadius: "2rem",
+            padding: "0.2rem",
+            border: "1px solid #cbd5e1",
           }}
         >
-          {/* Program Filter */}
-          <div
-            style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}
-          >
-            <span
-              style={{
-                fontSize: "0.8rem",
-                fontWeight: "600",
-                color: "#475569",
-              }}
-            >
-              Program:
-            </span>
-            <select
-              value={programFilter}
-              onChange={(e) => handleProgramFilterChange(e.target.value)}
-              style={{
-                padding: "0.45rem 0.75rem",
-                borderRadius: "0.45rem",
-                border: "1px solid #cbd5e1",
-                background: "#ffffff",
-                fontSize: "0.85rem",
-                fontWeight: "500",
-                color: "#1e293b",
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              <option value="All Programs">All Programs</option>
-              {programs.map((prog) => (
-                <option key={prog._id} value={prog.name}>
-                  {prog.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Category Filter */}
-          <div
-            style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}
-          >
-            <span
-              style={{
-                fontSize: "0.8rem",
-                fontWeight: "600",
-                color: "#475569",
-              }}
-            >
-              Category:
-            </span>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              style={{
-                padding: "0.45rem 0.75rem",
-                borderRadius: "0.45rem",
-                border: "1px solid #cbd5e1",
-                background: "#ffffff",
-                fontSize: "0.85rem",
-                fontWeight: "500",
-                color: "#1e293b",
-                outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              <option value="All Categories">All Categories</option>
-              {availableCategories.map((cat) => (
-                <option key={cat._id} value={cat.name}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Status Toggle */}
-          <div
-            style={{
-              display: "flex",
-              backgroundColor: "#fff",
-              borderRadius: "2rem",
-              padding: "0.2rem",
-              border: "1px solid #cbd5e1",
-            }}
-          >
-            {["All", "Active", "Completed"].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                style={{
-                  background: filter === f ? "#4f46e5" : "transparent",
-                  color: filter === f ? "#fff" : "#64748b",
-                  border: "none",
-                  borderRadius: "1.5rem",
-                  padding: "0.35rem 0.9rem",
-                  fontSize: "0.82rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-
-          {/* Reset Filters button */}
-          {hasActiveFilters && (
+          {["All", "Active", "Completed"].map((f) => (
             <button
-              onClick={handleResetFilters}
-              title="Reset all filters"
+              key={f}
+              onClick={() => setFilter(f)}
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.3rem",
-                padding: "0.45rem 0.75rem",
-                borderRadius: "0.45rem",
-                border: "1px solid #cbd5e1",
-                background: "#f8fafc",
-                color: "#64748b",
-                fontSize: "0.8rem",
-                fontWeight: "600",
+                background: filter === f ? "#4f46e5" : "transparent",
+                color: filter === f ? "#fff" : "#64748b",
+                border: "none",
+                borderRadius: "1.5rem",
+                padding: "0.35rem 0.9rem",
+                fontSize: "0.82rem",
+                fontWeight: 600,
                 cursor: "pointer",
                 transition: "all 0.15s ease",
               }}
             >
-              <RotateCcw size={13} />
-              Reset
+              {f}
             </button>
-          )}
+          ))}
         </div>
-      </div>
 
+        {/* Reset Filters button */}
+        {hasActiveFilters && (
+          <button
+            onClick={handleResetFilters}
+            title="Reset all filters"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.3rem",
+              padding: "0.45rem 0.75rem",
+              borderRadius: "0.45rem",
+              border: "1px solid #cbd5e1",
+              background: "#f8fafc",
+              color: "#64748b",
+              fontSize: "0.8rem",
+              fontWeight: "600",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <RotateCcw size={13} />
+            Reset
+          </button>
+        )}
+      </div>
       {/* Active Filter Indicators */}
       {hasActiveFilters && (
         <div
@@ -479,7 +615,7 @@ export default function Analytics() {
             {formatCurrency(totalBudget)}
           </div>
           <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-            Sum of project budgets
+            {budgetSubtitle}
           </div>
         </div>
 
@@ -545,61 +681,145 @@ export default function Analytics() {
           marginBottom: "2rem",
         }}
       >
-        {/* Category Budget vs Spend */}
+        {/* Program / Category Budget vs Spend */}
         <div className="glass-panel">
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              marginBottom: "1.5rem",
+              marginBottom: "1.25rem",
+              flexWrap: "wrap",
+              gap: "0.5rem",
             }}
           >
-            <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: 0 }}>
-              Category Budget vs Spend
-            </h3>
+            <div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 600, margin: 0 }}>
+                {activeBreakdown === "program"
+                  ? "Program Budget vs Spend"
+                  : `Category Budget vs Spend ${
+                      programFilter !== "All Programs"
+                        ? `(${programFilter})`
+                        : ""
+                    }`}
+              </h3>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "#64748b",
+                  marginTop: "0.2rem",
+                }}
+              >
+                {activeBreakdown === "program"
+                  ? "Allocated program budgets vs current spend"
+                  : programFilter !== "All Programs"
+                    ? `Categories under ${programFilter}`
+                    : "All categories across programs"}
+              </div>
+            </div>
+
             <div
               style={{
                 display: "flex",
+                alignItems: "center",
                 gap: "1rem",
-                fontSize: "0.75rem",
-                color: "#64748b",
+                flexWrap: "wrap",
               }}
             >
+              {/* Toggle By Program / By Category */}
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
+                  background: "#f1f5f9",
+                  borderRadius: "1.5rem",
+                  padding: "0.2rem",
+                  border: "1px solid #e2e8f0",
                 }}
               >
-                <div
+                <button
+                  type="button"
+                  onClick={() => setBreakdownView("program")}
                   style={{
-                    width: "10px",
-                    height: "10px",
-                    borderRadius: "2px",
-                    border: "1px solid #4f46e5",
-                    background: "transparent",
+                    border: "none",
+                    borderRadius: "1.2rem",
+                    padding: "0.25rem 0.65rem",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background:
+                      activeBreakdown === "program" ? "#4f46e5" : "transparent",
+                    color: activeBreakdown === "program" ? "#fff" : "#64748b",
+                    transition: "all 0.15s ease",
                   }}
-                ></div>
-                Allocated
+                >
+                  By Program
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBreakdownView("category")}
+                  style={{
+                    border: "none",
+                    borderRadius: "1.2rem",
+                    padding: "0.25rem 0.65rem",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background:
+                      activeBreakdown === "category"
+                        ? "#4f46e5"
+                        : "transparent",
+                    color: activeBreakdown === "category" ? "#fff" : "#64748b",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  By Category
+                </button>
               </div>
+
+              {/* Legend */}
               <div
                 style={{
                   display: "flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
+                  gap: "0.75rem",
+                  fontSize: "0.75rem",
+                  color: "#64748b",
                 }}
               >
                 <div
                   style={{
-                    width: "10px",
-                    height: "10px",
-                    borderRadius: "2px",
-                    background: "#4f46e5",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
                   }}
-                ></div>
-                Spent
+                >
+                  <div
+                    style={{
+                      width: "10px",
+                      height: "10px",
+                      borderRadius: "2px",
+                      border: "1px solid #818cf8",
+                      background: "#eef2ff",
+                    }}
+                  ></div>
+                  Allocated
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "10px",
+                      height: "10px",
+                      borderRadius: "2px",
+                      background: "#4f46e5",
+                    }}
+                  ></div>
+                  Spent
+                </div>
               </div>
             </div>
           </div>
@@ -608,35 +828,65 @@ export default function Analytics() {
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: "1.5rem",
+              gap: "1.25rem",
               overflowY: "auto",
-              maxHeight: "10rem",
+              maxHeight: "18rem",
               padding: "0.5rem",
             }}
           >
-            {categoriesData.map((cat) => (
+            {currentBreakdownData.map((item) => (
               <div
-                key={cat.name}
+                key={item.name}
+                onClick={() => {
+                  if (
+                    activeBreakdown === "program" &&
+                    item.name !== "Unassigned"
+                  ) {
+                    handleProgramFilterChange(item.name);
+                  }
+                }}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "150px 1fr 80px",
+                  gridTemplateColumns: "170px 1fr 100px",
                   gap: "1rem",
                   alignItems: "center",
+                  cursor:
+                    activeBreakdown === "program" && item.name !== "Unassigned"
+                      ? "pointer"
+                      : "default",
+                  borderRadius: "0.35rem",
+                  padding: "0.25rem",
+                  transition: "background 0.15s ease",
                 }}
+                title={
+                  activeBreakdown === "program" && item.name !== "Unassigned"
+                    ? `Click to filter by ${item.name}`
+                    : item.name
+                }
               >
                 <div>
                   <div
                     style={{
-                      fontSize: "1rem",
+                      fontSize: "0.95rem",
                       fontWeight: 600,
                       color: "#1e293b",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                     }}
                   >
-                    {cat.name}
+                    {item.name}
                   </div>
                   <div style={{ fontSize: "0.7rem", color: "#94a3b8" }}>
-                    {cat.count} project{cat.count !== 1 ? "s" : ""} •
-                    {cat.percentUsed}% used
+                    {item.count} project{item.count !== 1 ? "s" : ""} •{" "}
+                    <span
+                      style={{
+                        color: item.percentUsed > 100 ? "#ef4444" : "#64748b",
+                        fontWeight: item.percentUsed > 100 ? 600 : 400,
+                      }}
+                    >
+                      {item.percentUsed}% used
+                    </span>
                   </div>
                 </div>
                 {/* Custom Bar */}
@@ -656,9 +906,13 @@ export default function Analytics() {
                       left: 0,
                       top: 0,
                       bottom: 0,
-                      width: `${(cat.budget / maxCategoryBudget) * 100}%`,
+                      width: `${Math.min(
+                        100,
+                        (item.budget / maxBreakdownBudget) * 100,
+                      )}%`,
                       background: "#eef2ff",
                       borderRadius: "4px",
+                      border: "1px solid #c7d2fe",
                     }}
                   ></div>
                   {/* Spent Bar */}
@@ -668,8 +922,12 @@ export default function Analytics() {
                       left: 0,
                       top: 0,
                       bottom: 0,
-                      width: `${(cat.spent / maxCategoryBudget) * 100}%`,
-                      background: "#4f46e5",
+                      width: `${Math.min(
+                        100,
+                        (item.spent / maxBreakdownBudget) * 100,
+                      )}%`,
+                      background:
+                        item.percentUsed > 100 ? "#ef4444" : "#4f46e5",
                       borderRadius: "4px",
                     }}
                   ></div>
@@ -677,22 +935,30 @@ export default function Analytics() {
                 <div style={{ textAlign: "right" }}>
                   <div
                     style={{
-                      fontSize: "0.8rem",
+                      fontSize: "0.85rem",
                       fontWeight: 600,
                       color: "#1e293b",
                     }}
                   >
-                    {formatCurrency(cat.budget)}
+                    {formatCurrency(item.budget)}
                   </div>
                   <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                    {formatCurrency(cat.spent)}
+                    {formatCurrency(item.spent)}
                   </div>
                 </div>
               </div>
             ))}
-            {categoriesData.length === 0 && (
-              <div style={{ color: "#94a3b8", fontSize: "0.9rem" }}>
-                No categories found in this view.
+            {currentBreakdownData.length === 0 && (
+              <div
+                style={{
+                  color: "#94a3b8",
+                  fontSize: "0.9rem",
+                  padding: "1rem 0",
+                }}
+              >
+                {activeBreakdown === "program"
+                  ? "No programs found in this view."
+                  : "No categories found in this view."}
               </div>
             )}
           </div>

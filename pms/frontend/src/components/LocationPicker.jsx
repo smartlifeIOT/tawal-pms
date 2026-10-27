@@ -6,24 +6,21 @@ import {
   Autocomplete,
 } from "@react-google-maps/api";
 
+import { GOOGLE_MAPS_LOADER } from "../utils/googleMaps";
+
 const containerStyle = {
   width: "100%",
   height: "200px",
   borderRadius: "0.4rem",
-  marginTop: "1rem",
+  marginTop: "0.75rem",
 };
-
-const libraries = ["places"];
 
 export default function LocationPicker({
   latitude,
   longitude,
   onLocationChange,
 }) {
-  const { isLoaded, loadError } = useJsApiLoader({
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-    libraries,
-  });
+  const { isLoaded, loadError } = useJsApiLoader(GOOGLE_MAPS_LOADER);
 
   const [map, setMap] = useState(null);
   const autocompleteRef = useRef(null);
@@ -56,7 +53,10 @@ export default function LocationPicker({
       if (status === "OK" && results[0]) {
         for (let component of results[0].address_components) {
           const types = component.types;
-          if (types.includes("locality") || types.includes("administrative_area_level_2")) {
+          if (
+            types.includes("locality") ||
+            types.includes("administrative_area_level_2")
+          ) {
             if (!city) city = component.long_name;
           }
           if (types.includes("administrative_area_level_1")) {
@@ -94,7 +94,10 @@ export default function LocationPicker({
         if (place.address_components) {
           for (let component of place.address_components) {
             const types = component.types;
-            if (types.includes("locality") || types.includes("administrative_area_level_2")) {
+            if (
+              types.includes("locality") ||
+              types.includes("administrative_area_level_2")
+            ) {
               if (!city) city = component.long_name;
             }
             if (types.includes("administrative_area_level_1")) {
@@ -130,7 +133,16 @@ export default function LocationPicker({
   }
 
   return (
-    <div style={{ position: "relative", width: "100%", marginTop: "1rem" }}>
+    <div style={{ position: "relative", width: "100%", marginTop: "0.5rem" }}>
+      <style>{`
+        .pac-container {
+          z-index: 99999 !important;
+          border-radius: 0.5rem;
+          margin-top: 4px;
+          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+          font-family: inherit;
+        }
+      `}</style>
       <GoogleMap
         mapContainerStyle={containerStyle}
         center={center}
@@ -143,33 +155,39 @@ export default function LocationPicker({
           streetViewControl: false,
         }}
       >
-        {/* <Autocomplete
+        <Autocomplete
           onLoad={onLoadAutocomplete}
           onPlaceChanged={onPlaceChanged}
         >
           <input
             type="text"
-            placeholder="Search for a location..."
+            placeholder="Search address or location..."
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+              }
+            }}
             style={{
               boxSizing: `border-box`,
-              border: `1px solid transparent`,
-              width: `80%`,
-              height: `40px`,
-              padding: `0 12px`,
+              border: `1px solid rgba(0,0,0,0.15)`,
+              width: `85%`,
+              height: `38px`,
+              padding: `0 14px`,
               borderRadius: `0.4rem`,
-              boxShadow: `0 2px 6px rgba(0, 0, 0, 0.3)`,
-              fontSize: `14px`,
+              boxShadow: `0 2px 8px rgba(0, 0, 0, 0.25)`,
+              fontSize: `13.5px`,
               outline: `none`,
-              textOverflow: `ellipses`,
               position: "absolute",
               top: "10px",
               left: "50%",
               transform: "translateX(-50%)",
               zIndex: 10,
-              maxWidth: "400px",
+              maxWidth: "420px",
+              background: "#ffffff",
+              color: "#1e293b",
             }}
           />
-        </Autocomplete> */}
+        </Autocomplete>
 
         {latitude && longitude && (
           <Marker

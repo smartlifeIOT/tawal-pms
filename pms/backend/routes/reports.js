@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 const Project = require("../models/Project");
+const Program = require("../models/Program");
+const Category = require("../models/Category");
 const { protect, authorize } = require("../middleware/auth");
 
 // Helper: build base query based on role and optional filters
@@ -9,7 +11,8 @@ function buildBaseQuery(req) {
   const fullAccessRoles = ["Admin", "Manager", "PM"];
   let query = fullAccessRoles.includes(role) ? {} : { teamMembers: email };
 
-  const { category, status, region, city, from, to } = req.query;
+  const { program, category, status, region, city, from, to } = req.query;
+  if (program && program !== "all") query.program = program;
   if (category && category !== "all") query.category = category;
   if (status && status !== "all") query.status = status;
   if (region && region !== "all")
@@ -47,6 +50,7 @@ router.get("/summary", protect, async (req, res) => {
       statusData,
       priorityData,
       categoryData,
+      programData,
     ] = await Promise.all([
       Project.countDocuments(query),
       Project.countDocuments({ ...query, status: "Mapping" }),
@@ -82,9 +86,39 @@ router.get("/summary", protect, async (req, res) => {
         { $project: { _id: 0, name: "$_id", count: 1 } },
         { $sort: { count: -1 } },
       ]),
+      Project.aggregate([
+        { $match: query },
+        { $group: { _id: "$program", count: { $sum: 1 } } },
+        {
+          $project: {
+            _id: 0,
+            name: { $ifNull: ["$_id", "Unassigned"] },
+            count: 1,
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
     ]);
 
-    const totalBudget = budgetAgg[0]?.total || 0;
+    const { program, category } = req.query;
+    let totalBudget = 0;
+    if (category && category !== "all") {
+      const catDoc = await Category.findOne({ name: category });
+      totalBudget = catDoc?.budget || 0;
+    } else if (program && program !== "all") {
+      const progDoc = await Program.findOne({ name: program });
+      totalBudget = progDoc?.budget || 0;
+    } else {
+      const progBudgetAgg = await Program.aggregate([
+        { $group: { _id: null, total: { $sum: "$budget" } } },
+      ]);
+      totalBudget = progBudgetAgg[0]?.total || 0;
+    }
+
+    if (!totalBudget) {
+      totalBudget = budgetAgg[0]?.total || 0;
+    }
+
     const totalSpent = spentAgg[0]?.total || 0;
     const completionRate =
       totalProjects > 0
@@ -109,6 +143,7 @@ router.get("/summary", protect, async (req, res) => {
       statusData,
       priorityData,
       categoryData,
+      programData,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -293,44 +328,71 @@ router.get("/budget", protect, async (req, res) => {
   try {
     const query = buildBaseQuery(req);
 
-    const [categoryBudget, topProjects, overBudgetCount, underBudgetCount] =
-      await Promise.all([
-        Project.aggregate([
-          { $match: query },
-          {
-            $group: {
-              _id: "$category",
-              budget: { $sum: "$budget" },
-              spent: { $sum: "$spent" },
-              count: { $sum: 1 },
-            },
+    const [
+      categoryBudget,
+      programBudget,
+      topProjects,
+      overBudgetCount,
+      underBudgetCount,
+    ] = await Promise.all([
+      Project.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: "$category",
+            budget: { $sum: "$budget" },
+            spent: { $sum: "$spent" },
+            count: { $sum: 1 },
           },
-          {
-            $project: {
-              _id: 0,
-              category: "$_id",
-              budget: 1,
-              spent: 1,
-              count: 1,
-              variance: { $subtract: ["$budget", "$spent"] },
-            },
+        },
+        {
+          $project: {
+            _id: 0,
+            category: "$_id",
+            budget: 1,
+            spent: 1,
+            count: 1,
+            variance: { $subtract: ["$budget", "$spent"] },
           },
-          { $sort: { budget: -1 } },
-        ]),
-        Project.find(query)
-          .sort({ budget: -1 })
-          .limit(10)
-          .select("title budget spent category status")
-          .lean(),
-        Project.countDocuments({
-          ...query,
-          $expr: { $gt: ["$spent", "$budget"] },
-        }),
-        Project.countDocuments({
-          ...query,
-          $expr: { $lte: ["$spent", "$budget"] },
-        }),
-      ]);
+        },
+        { $sort: { budget: -1 } },
+      ]),
+      Project.aggregate([
+        { $match: query },
+        {
+          $group: {
+            _id: "$program",
+            budget: { $sum: "$budget" },
+            spent: { $sum: "$spent" },
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            program: { $ifNull: ["$_id", "Unassigned"] },
+            budget: 1,
+            spent: 1,
+            count: 1,
+            variance: { $subtract: ["$budget", "$spent"] },
+          },
+        },
+        { $sort: { budget: -1 } },
+      ]),
+      Project.find(query)
+        .sort({ budget: -1 })
+        .limit(10)
+        .select("title program budget spent category status")
+        .lean(),
+      Project.countDocuments({
+        ...query,
+        $expr: { $gt: ["$spent", "$budget"] },
+      }),
+      Project.countDocuments({
+        ...query,
+        $expr: { $lte: ["$spent", "$budget"] },
+      }),
+    ]);
 
     const projectsWithVariance = topProjects.map((p) => ({
       ...p,
@@ -340,6 +402,7 @@ router.get("/budget", protect, async (req, res) => {
 
     res.json({
       categoryBudget,
+      programBudget,
       topProjects: projectsWithVariance,
       overBudgetCount,
       underBudgetCount,
@@ -446,12 +509,13 @@ router.get("/export", protect, authorize("Admin", "PM"), async (req, res) => {
     const query = buildBaseQuery(req);
     const projects = await Project.find(query)
       .select(
-        "title category status priority region city budget spent progress teamLead startDate endDate siteId tawalId createdAt mapping.woRequest.status mapping.woIssuance.status mapping.materialsRequest.status installation.tcnRequest.status installation.siteInstallation.status integration.alarmsConfiguration.status closeout.patStatus.status closeout.invoicing.status",
+        "title program category status priority region city budget spent progress teamLead startDate endDate siteId tawalId createdAt mapping.woRequest.status mapping.woIssuance.status mapping.materialsRequest.status installation.tcnRequest.status installation.siteInstallation.status integration.alarmsConfiguration.status closeout.patStatus.status closeout.invoicing.status",
       )
       .lean();
 
     const rows = projects.map((p) => ({
       Title: p.title || "",
+      Program: p.program || "",
       Category: p.category || "",
       Status: p.status || "",
       Priority: p.priority || "",

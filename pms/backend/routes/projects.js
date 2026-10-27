@@ -260,6 +260,23 @@ router.get("/stats", protect, async (req, res) => {
       { $group: { _id: "$category", value: { $sum: 1 } } },
       { $project: { _id: 0, name: "$_id", value: 1 } },
     ]);
+    const programData = await Project.aggregate([
+      { $match: baseFilter },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ["$program", null] }, { $ne: ["$program", ""] }] },
+              "$program",
+              "Unassigned",
+            ],
+          },
+          value: { $sum: 1 },
+        },
+      },
+      { $project: { _id: 0, name: "$_id", value: 1 } },
+      { $sort: { value: -1 } },
+    ]);
     const statusData = await Project.aggregate([
       { $match: baseFilter },
       { $group: { _id: "$status", value: { $sum: 1 } } },
@@ -277,6 +294,7 @@ router.get("/stats", protect, async (req, res) => {
       criticalCount,
       totalBudget,
       categoryData,
+      programData,
       statusData,
       budgetData,
     });

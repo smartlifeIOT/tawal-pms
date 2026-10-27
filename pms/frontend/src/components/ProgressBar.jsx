@@ -21,7 +21,7 @@ export default function ProgressBar({ project, editMode, form }) {
         ];
         const sourceData = editMode ? form : project;
         const currentStatus = sourceData?.status || "Initiation";
-
+        //
         // Derive the active phase index directly from the status
         const activePhaseIdx = phases.findIndex(
           (p) => p.statusMatch === currentStatus,
@@ -90,7 +90,6 @@ export default function ProgressBar({ project, editMode, form }) {
                   zIndex: 1,
                 }}
               />
-
               {/* Phase dots + labels */}
               <div
                 style={{
