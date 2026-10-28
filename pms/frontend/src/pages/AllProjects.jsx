@@ -358,14 +358,14 @@ const AllProjects = () => {
             <button
               className="btn btn-secondary"
               onClick={() => downloadProjectsTemplate("xlsx")}
-              title="Download Excel template (.xlsx) with Program, Category, and Scope headers"
+              title="Download Excel template (.xlsx) with Program, Category, Scope, and Milestone headers"
             >
               <Download size={15} /> Template (.xlsx)
             </button>
             <button
               className="btn btn-secondary"
               onClick={() => downloadProjectsTemplate("csv")}
-              title="Download CSV template (.csv) with Program, Category, and Scope headers"
+              title="Download CSV template (.csv) with Program, Category, Scope, and Milestone headers"
             >
               <Download size={15} /> Template (.csv)
             </button>
@@ -385,15 +385,37 @@ const AllProjects = () => {
             </button>
             <button
               className="btn btn-secondary"
-              onClick={() => exportToExcel(projects, "projects_export.xlsx")}
-              title="Download as Excel (.xlsx) including Program column"
+              onClick={() => {
+                const dataToExport =
+                  selectedIds.length > 0
+                    ? projects.filter((p) => selectedIds.includes(p._id))
+                    : projects;
+                exportToExcel(
+                  dataToExport,
+                  selectedIds.length > 0
+                    ? `projects_export_selected_${selectedIds.length}.xlsx`
+                    : "projects_export.xlsx",
+                );
+              }}
+              title="Download as Excel (.xlsx) including Milestones (Mapping, Installation, Integration, Closeout)"
             >
               <FileSpreadsheet size={15} /> Export Excel
             </button>
             <button
               className="btn btn-secondary"
-              onClick={() => exportToCSV(projects, "projects_export.csv")}
-              title="Download as CSV (.csv) including Program column"
+              onClick={() => {
+                const dataToExport =
+                  selectedIds.length > 0
+                    ? projects.filter((p) => selectedIds.includes(p._id))
+                    : projects;
+                exportToCSV(
+                  dataToExport,
+                  selectedIds.length > 0
+                    ? `projects_export_selected_${selectedIds.length}.csv`
+                    : "projects_export.csv",
+                );
+              }}
+              title="Download as CSV (.csv) including Milestones (Mapping, Installation, Integration, Closeout)"
             >
               <Download size={15} /> Export CSV
             </button>
@@ -444,6 +466,31 @@ const AllProjects = () => {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                const dataToExport = projects.filter((p) =>
+                  selectedIds.includes(p._id),
+                );
+                exportToExcel(
+                  dataToExport,
+                  `projects_export_selected_${selectedIds.length}.xlsx`,
+                );
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                fontSize: "0.85rem",
+                padding: "0.45rem 0.85rem",
+              }}
+              title="Export selected projects to Excel (.xlsx) including milestones"
+            >
+              <FileSpreadsheet size={15} />
+              Export Selected ({selectedIds.length})
+            </button>
+
             {canManageProjects && (
               <button
                 type="button"

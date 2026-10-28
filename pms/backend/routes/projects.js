@@ -725,6 +725,72 @@ router.post(
           }
         }
 
+        // Clean up empty string / invalid dates from milestone subdocuments so Mongoose doesn't fail on Date casting
+        const cleanDates = (sub) => {
+          if (!sub || typeof sub !== "object") return;
+          for (const k of Object.keys(sub)) {
+            if (k === "date") {
+              if (
+                !sub.date ||
+                (typeof sub.date === "string" && !sub.date.trim())
+              ) {
+                delete sub.date;
+              } else {
+                const parsed = new Date(sub.date);
+                if (isNaN(parsed.getTime())) {
+                  delete sub.date;
+                } else {
+                  sub.date = parsed;
+                }
+              }
+            } else if (
+              typeof sub[k] === "object" &&
+              sub[k] !== null &&
+              !(sub[k] instanceof Date)
+            ) {
+              cleanDates(sub[k]);
+            }
+          }
+        };
+
+        if (projectData.mapping) cleanDates(projectData.mapping);
+        if (projectData.installation) cleanDates(projectData.installation);
+        if (projectData.integration) cleanDates(projectData.integration);
+        if (projectData.closeout) cleanDates(projectData.closeout);
+
+        // If status was not explicitly provided or is default Initiation, automatically evaluate progression
+        if (!projectData.status || projectData.status === "Initiation") {
+          const isCloseoutDone =
+            ["Completed", "N/A"].includes(
+              projectData.closeout?.capitalisationSheetUpdate?.status,
+            ) &&
+            ["Approved", "N/A"].includes(projectData.closeout?.patTcn?.status) &&
+            ["Approved", "N/A"].includes(projectData.closeout?.patStatus?.status) &&
+            ["Completed", "N/A"].includes(projectData.closeout?.invoicing?.status);
+
+          const isIntegrationDone = ["Completed", "N/A"].includes(
+            projectData.integration?.tenantsIntegration?.status,
+          );
+
+          const isInstallationDone = ["Completed", "N/A"].includes(
+            projectData.installation?.siteInstallation?.status,
+          );
+
+          const isMappingDone =
+            ["Requested", "N/A"].includes(projectData.mapping?.woRequest?.status) &&
+            ["Approved", "N/A"].includes(projectData.mapping?.woIssuance?.status);
+
+          if (isCloseoutDone) {
+            projectData.status = "Completed";
+          } else if (isIntegrationDone) {
+            projectData.status = "Closeout";
+          } else if (isInstallationDone) {
+            projectData.status = "Integration";
+          } else if (isMappingDone) {
+            projectData.status = "Installation";
+          }
+        }
+
         validatedProjects.push(projectData);
       }
 
