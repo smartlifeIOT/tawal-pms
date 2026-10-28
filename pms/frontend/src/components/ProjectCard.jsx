@@ -252,7 +252,7 @@ export default function ProjectCard({
           marginTop: "15px",
         }}
       >
-        {proj.description.slice(0, 100) || "\u00A0"}
+        {proj?.description?.slice(0, 100) || "\u00A0"}
       </p>
 
       {(() => {
